@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+	 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	 xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd"
+	 version="3.1">
+    <servlet>
+        <servlet-name>dispatcher</servlet-name>
+        <servlet-class>
+            org.springframework.web.servlet.DispatcherServlet
+        </servlet-class>
+        <load-on-startup>1</load-on-startup><!--definisce la priorità di caricamento dal container della servlet-->
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>dispatcher</servlet-name><!--va a vedere se nel web-inf c'è un file xml che comincia con "dispatcher" il classico dispatcher-servlet.xml-->
+        <url-pattern>/api/*</url-pattern> <!--specifico url al quale il dispatcher viene chiamato -->
+    </servlet-mapping>
+    
+    <!--<listener>
+        <listlistener-class>org.springframework.web.context.ContextLoaderListener</listlistener-class>
+    </listener>
+    <context-param>
+        <param-name>contextConfigLocation</param-name>
+        <parparam-value>
+            /WEB-INF/dispatcher-servlet.xml
+        </parparam-value>
+    </context-param>
+    -->
+    <session-config>
+        <session-timeout>
+            30          <!-- espresso in minuti -->
+        </session-timeout>
+    </session-config>
+</web-app>
