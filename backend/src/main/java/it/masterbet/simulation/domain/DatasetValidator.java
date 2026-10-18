@@ -53,29 +53,8 @@ public class DatasetValidator {
               q.fixtureId() + "|" + q.bookmaker() + "|" + q.market().id() + "|" + q.outcomeId()))
         throw new IllegalArgumentException("Quota duplicata o successiva al taglio temporale");
     }
-    for (var f : targets.values())
-      for (String family :
-          List.of(
-              "1x2/fulltime",
-              "bothteamsscore/fulltime",
-              "totals/fulltime",
-              "totals/p1",
-              "totals/p2",
-              "halftime-fulltime/fulltime")) {
-        var counts =
-            data.quotes().stream()
-                .filter(
-                    q ->
-                        q.fixtureId().equals(f.id())
-                            && (q.market().type() + "/" + q.market().period()).equals(family))
-                .collect(
-                    Collectors.groupingBy(
-                        q -> q.bookmaker() + "/" + q.market().id(), Collectors.counting()));
-        long required =
-            family.startsWith("1x2") ? 3 : family.startsWith("halftime-fulltime") ? 9 : 2;
-        if (counts.values().stream().noneMatch(n -> n >= required))
-          throw new IllegalArgumentException(
-              "Famiglia di quote incompleta: " + f.id() + " " + family);
-      }
+    // La copertura commerciale varia per partita, bookmaker e istante: una famiglia
+    // assente (o un solo esito disponibile) non invalida le altre quote al taglio.
+    // Predizioni e schedine usano solo gli esiti presenti; nessuna quota viene ricostruita.
   }
 }

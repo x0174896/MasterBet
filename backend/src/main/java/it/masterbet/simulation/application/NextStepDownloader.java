@@ -65,8 +65,12 @@ public class NextStepDownloader {
     var targets = official.targets(season, schedule, cutoff, end);
     progress.accept("Download quote storiche al nuovo taglio, prima dei risultati");
     List<QuotedOutcome> quotes = new ArrayList<>();
-    for (var f : targets)
-      quotes.addAll(odds.downloadAt(f, cutoff, List.of("unibet", "pinnacle", "bet365")));
+    for (var f : targets) {
+      var available = odds.downloadAt(f, cutoff, List.of("unibet", "pinnacle", "bet365"));
+      quotes.addAll(available);
+      org.slf4j.LoggerFactory.getLogger(NextStepDownloader.class)
+          .info("Quote al taglio per {}: {} esiti disponibili", f.id(), available.size());
+    }
     Map<String, PlayedMatch> history = new TreeMap<>();
     old.leagueHistory().forEach(m -> history.put(m.fixture().id(), m));
     progress.accept("Download referti ufficiali: primo tempo e finale");

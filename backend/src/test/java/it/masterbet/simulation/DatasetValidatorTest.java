@@ -1,14 +1,23 @@
 package it.masterbet.simulation;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
+import it.masterbet.betting.application.BettingService;
+import it.masterbet.betting.domain.*;
+import it.masterbet.betting.infrastructure.BettingRepository;
 import it.masterbet.football.domain.*;
+import it.masterbet.model.application.ModelTrainingService;
+import it.masterbet.model.domain.*;
 import it.masterbet.odds.domain.*;
+import it.masterbet.simulation.application.PredictionService;
 import it.masterbet.simulation.domain.*;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class DatasetValidatorTest {
   final Instant cut = Instant.parse("2026-04-29T12:00:00Z");
@@ -86,10 +95,94 @@ class DatasetValidatorTest {
     assertDoesNotThrow(() -> validator.validate(valid()));
   }
 
-  @Test
-  void missingRequiredFamilyFails() {
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "1x2/fulltime",
+        "bothteamsscore/fulltime",
+        "totals/fulltime",
+        "totals/p1",
+        "totals/p2",
+        "halftime-fulltime/fulltime"
+      })
+  void unavailableMarketFamilyDoesNotInvalidateOtherQuotes(String family) {
     var d = valid();
-    d.quotes().removeIf(q -> q.market().period().equals("p2"));
+    d.quotes().removeIf(q -> (q.market().type() + "/" + q.market().period()).equals(family));
+    var available = List.copyOf(d.quotes());
+    assertDoesNotThrow(() -> validator.validate(d));
+    assertEquals(available, d.quotes());
+  }
+
+  @Test
+  void individualOutcomeAndUnquotedFixtureRemainUsableWithoutInventingCoverage() {
+    var d = valid();
+    var only = d.quotes().getFirst();
+    d.quotes().clear();
+    d.quotes().add(only);
+    assertDoesNotThrow(() -> validator.validate(d));
+    assertEquals(List.of(only), d.quotes());
+    assertEquals(8, d.targets().size());
+    d.quotes().clear();
+    assertDoesNotThrow(() -> validator.validate(d));
+    assertTrue(d.quotes().isEmpty());
+  }
+
+  @Test
+  void unavailableFamiliesStillAllowFiveRealSlipsForBothModels() {
+    var d = valid();
+    d.quotes().clear();
+    var market =
+        new Market(
+            "btts", "Both teams to score", "bothteamsscore", "fulltime", BigDecimal.ZERO,
+            false, Map.of("yes", "Yes", "no", "No"));
+    // Sei partite con un solo esito Unibet, una solo Pinnacle e una priva di quote.
+    for (int i = 0; i < 7; i++)
+      d.quotes()
+          .add(
+              new QuotedOutcome(
+                  d.targets().get(i).id(), i < 6 ? "unibet" : "pinnacle", market,
+                  "no", "No", new BigDecimal("2.1"), cut.minusSeconds(1)));
+    validator.validate(d);
+    var features = new FeatureBuilder();
+    var past = new ArrayList<>(d.trainingHistory());
+    past.addAll(d.leagueHistory());
+    var model = new ModelTrainingService(features, new PoissonTrainer()).train(past, d.calendar());
+    var predictions = new PredictionService(features);
+    var snapshot =
+        new Snapshot(d.id(), cut, "sparse-quotes", d, model, predictions.predict(d, model));
+    var repository = mock(BettingRepository.class);
+    var betting =
+        new BettingService(
+            repository, new SlipSelector(new ProfitTargetStaking()),
+            predictions, new BettingEvaluator(new MarketSettlement()));
+    var round = betting.prepare(snapshot, BettingConfig.defaults());
+    for (var slips : List.of(round.cups(), round.league())) {
+      assertEquals(5, slips.size());
+      var legs = slips.stream().flatMap(s -> s.legs().stream()).toList();
+      assertEquals(6, legs.size());
+      assertEquals(6, legs.stream().map(l -> l.quote().fixtureId()).distinct().count());
+      assertTrue(legs.stream().allMatch(l -> d.quotes().contains(l.quote())));
+      assertTrue(legs.stream().allMatch(l -> l.quote().bookmaker().equals("unibet")));
+    }
+  }
+
+  @Test
+  void invalidPriceAndUnknownFixtureStillFailWithPartialCoverage() {
+    var d = valid();
+    var q = d.quotes().getFirst();
+    d.quotes().clear();
+    d.quotes()
+        .add(
+            new QuotedOutcome(
+                q.fixtureId(), q.bookmaker(), q.market(), q.outcomeId(), q.outcome(),
+                BigDecimal.ONE, q.observedAt()));
+    assertThrows(IllegalArgumentException.class, () -> validator.validate(d));
+    d.quotes()
+        .set(
+            0,
+            new QuotedOutcome(
+                "unknown", q.bookmaker(), q.market(), q.outcomeId(), q.outcome(),
+                q.price(), q.observedAt()));
     assertThrows(IllegalArgumentException.class, () -> validator.validate(d));
   }
 
