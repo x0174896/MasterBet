@@ -44,6 +44,15 @@ public class SnapshotRepository {
         .findFirst();
   }
 
+  public Optional<Snapshot> latest() {
+    return jdbc
+        .query(
+            "SELECT payload FROM simulation_snapshot ORDER BY cutoff DESC LIMIT 1",
+            (rs, n) -> decode(rs.getString(1)))
+        .stream()
+        .findFirst();
+  }
+
   private String encode(Object data) {
     try {
       return mapper.writeValueAsString(data);

@@ -42,7 +42,7 @@ Su questa workstation database e ruolo sono già stati creati e verificati. Non 
 
 Per una nuova installazione, un amministratore crea database e ruolo dedicati. `scripts/bootstrap-postgres.ps1` conserva la procedura speciale usata, con accesso amministrativo temporaneo su localhost, ripristino immediato dell'autenticazione originale, backup locale e controlli contro risorse preesistenti. Richiede autorizzazione esplicita e il parametro `-ApproveTemporaryLocalAdminAccess`; non è una procedura ordinaria di avvio né un reset password. Non riavvia il servizio.
 
-Flyway applica `backend/src/main/resources/db/migration/`. Schema `public`, tabelle per partite, risultati, modelli e snapshot; vincoli sui gol HT/FT. Gli istanti sono stringhe ISO-8601 UTC e i payload JSON conservano il dettaglio normalizzato. I test usano esclusivamente H2 in memoria e non le credenziali locali. Nessuna estensione PostgreSQL richiesta.
+Flyway applica `backend/src/main/resources/db/migration/`. Schema `public`, tabelle per partite, risultati, modelli e snapshot; vincoli sui gol HT/FT. V2 aggiunge schedine immutabili e stato del job; V3 una revisione separata della proposta, blocco dopo consultazione ed esiti indipendenti. Non modificare migrazioni già applicate. Gli istanti sono stringhe ISO-8601 UTC e i payload JSON conservano il dettaglio normalizzato. I test usano esclusivamente H2 in memoria e non le credenziali locali. Nessuna estensione PostgreSQL richiesta.
 
 ## Installazione, build e test
 
@@ -82,9 +82,9 @@ Da `backend`, dopo `package`, con il database disponibile:
 java -jar target/masterbet-backend-0.1.0.jar --import-scenario --server.port=0
 ```
 
-Il comando scarica solo le risposte assenti in cache, verifica il dataset, addestra i due modelli (campionato e calendario esteso), calcola le probabilità e pubblica in un'unica transazione. Esce con `MASTERBET_IMPORT_OK`. Non è una chiamata avviabile dall'interfaccia web. La consultazione non chiama OddsPapi.
+Il comando importa lo scenario iniziale al 29 aprile: scarica solo le risposte assenti in cache, verifica il dataset, addestra i due modelli (campionato e calendario esteso), calcola le probabilità e pubblica in un'unica transazione. Esce con `MASTERBET_IMPORT_OK`. Usare il job web descritto sotto per avanzare, non ripetere l'importazione iniziale per creare nuovi step. La semplice apertura della pagina non chiama OddsPapi.
 
-Prima importazione da zero: circa 151 richieste fatturate, più 8 richieste storiche attualmente non conteggiate dal piano, secondo le regole del provider verificate. I dati mancanti o anomali possono richiedere indagini aggiuntive. Il client verifica il piano gratuito e conserva almeno 10 richieste; non tenta nuovi account o piani a pagamento. Alla verifica locale del 18 ottobre il contatore era 239/250. La quota può cambiare se la chiave viene usata altrove.
+Prima importazione da zero: circa 151 richieste fatturate, più 8 richieste storiche attualmente non conteggiate dal piano, secondo le regole del provider verificate. I dati mancanti o anomali possono richiedere indagini aggiuntive. Il client verifica il piano gratuito e conserva una riserva configurata di 1 richiesta (`masterbet.api-reserve`); non tenta nuovi account o piani a pagamento. Alla verifica locale del 18 ottobre, dopo l'avanzamento, il contatore è **241/250**. Le regole del provider e la quota possono cambiare se la chiave viene usata altrove.
 
 Le risposte originali sono in `.local/data/raw`, con richiesta priva di chiave, istante di acquisizione e SHA-256. Non cancellare questa cartella per riprovare: gli errori si analizzano sui dati originali. I controlli impediscono la pubblicazione di un dataset incompleto; uno snapshot precedente rimane consultabile.
 
@@ -124,6 +124,8 @@ Su questo PC aggiungere `-UseWindowsTrustStore` se si usa direttamente lo script
 - Salute HTTP: http://127.0.0.1:8080/api/health
 - Scenario: `GET /api/scenario`
 - Quote: `GET /api/matches/{fixtureId}/quotes`
+- Schedine e bilanci: `GET /api/betting`
+- Stato dell'avanzamento: `GET /api/advance-job`
 
 Angular inoltra `/api/**` al backend sulla porta 8080 tramite `proxy.conf.json`. Per avvio in terminali separati, dopo la build: `java -jar target/masterbet-backend-0.1.0.jar --server.port=8080` da `backend`, `npm start` da `frontend`. Entrambi ascoltano solo localhost. Eventuali altri servizi sulle porte richieste devono essere chiusi dal loro proprietario: il launcher non li arresta. Non è predisposta un'esposizione pubblica o un'autenticazione multiutente.
 
@@ -152,8 +154,31 @@ Dalla radice, con backend avviato e Python 3 disponibile (solo libreria standard
 ```powershell
 .\scripts\export-snapshot.ps1 -PostgresHome 'C:\Program Files\PostgreSQL\18'
 python -B scripts/audit-data.py
+python -B scripts/audit-betting.py
 ```
 
-L'export è consentito soltanto per il database locale documentato. L'audit verifica hash delle risposte, punteggi, periodi, prezzi e timestamp, esclusione di dati futuri, esiti mancanti/sospesi, statistiche ricostruite e corrispondenza delle API. Se è presente `.local/audit/nff-results.json`, verifica anche i 47 referti ufficiali acquisiti durante la validazione iniziale; altrimenti dichiara quel riscontro `NOT_RUN`. Il rapporto resta locale in `.local/audit/report.json`.
+L'export è consentito soltanto per il database locale documentato e comprende snapshot storici, proposte attive e consultazioni degli esiti. L'audit dati verifica hash, punteggi, periodi, prezzi/timestamp, esclusione del futuro dai dati del modello, esiti mancanti/sospesi, statistiche e API. I nuovi risultati sono confrontati con i referti in `.local/data/nff`. Se è presente `.local/audit/nff-results.json`, verifica anche i 47 referti della validazione iniziale; altrimenti dichiara quel riscontro `NOT_RUN`. L'audit schedine ricalcola probabilità dai pesi e dalle caratteristiche, importi e bilanci delle due varianti e verifica gli esiti consultati contro NFF. Rapporti in `.local/audit/report.json` e `betting-report.json`.
 
-Le verifiche obbligatorie prima della pubblicazione sono `mvnw test`, `npm run build`, `npm test -- --watch=false`, più l'audit reale quando cambiano acquisizione o calcoli dei dati. Nessuna modalità mock applicativa è presente: gli stub sono limitati ai test e il contratto GET reale è condiviso con i modelli TypeScript.
+Le verifiche obbligatorie prima della pubblicazione sono `mvnw test`, `npm run build`, `npm test -- --watch=false`, più gli audit reali quando cambiano acquisizione o calcoli. Nessuna modalità mock applicativa è presente: gli stub sono limitati ai test e i contratti GET/POST reali sono condivisi con i modelli TypeScript.
+
+## Avanzamento e schedine salvate
+
+Aprire «Schedine e avanzamento», scegliere il valore dell'unità e il limite per il prossimo step (massimo 2 unità), poi premere «Avanza uno step e calcola le schedine». Il capitale iniziale non si modifica dopo il primo salvataggio. Le impostazioni non riscrivono le schedine correnti.
+
+Contratto di avvio: `POST /api/advance-job`, risposta 202 con stato del job. Corpo JSON:
+
+```json
+{"expectedScenarioId":"eliteserien-2026-round8","config":{"unitValue":5,"initialBankrollUnits":100,"maxRoundUnits":2}}
+```
+
+Questo esempio avanza **oltre** lo step 8: non eseguirlo per una semplice verifica di salute. Polling `GET /api/advance-job` ogni 1,5 secondi; un ID scenario non corrente restituisce 409. Lo stato è persistente; i job con proprietario terminato sono marcati falliti alla lettura e possono essere ripetuti. La cache e le schedine già congelate sono conservate in caso di errore, mentre la pubblicazione del nuovo snapshot e delle nuove schedine è transazionale. Non correggere manualmente lo stato di un job con processo ancora attivo.
+
+Il pianificatore usa finestre di 7 giorni e salta settimane senza eventi. Prima dei download OddsPapi verifica il costo delle richieste calendario non in cache. Le nuove quote storiche sono scaricate prima dei nuovi risultati; questi ultimi provengono da NFF. I calendari di contesto sono richiesti in intervalli inferiori a 10 giorni, filtrati per le squadre pertinenti. Lo step 7 → 8 ha richiesto due chiamate fatturate (calendario stagione e contesto), sei richieste quote storiche non conteggiate e referti NFF gratuiti. Gli step futuri dipendono dalla copertura e dalla quota residua.
+
+Il job salva automaticamente fino a cinque schedine per modello. Quattro singole da 0,4 u e una doppia da 0,25 u richiedono sei partite idonee; con cinque partite vengono proposte cinque singole. Non vengono aumentati rischio o esposizione per raggiungere un numero prefissato. Puntate arrotondate per difetto ai centesimi; ritorno lordo con arrotondamento HALF_UP e netto ottenuto sottraendo la puntata.
+
+`POST /api/betting/save` con `{"expectedScenarioId":"..."}` salva la prima anteprima o applica la politica a cinque a una proposta legacy del solo scenario corrente. Conserva la proposta originale e rifiuta la revisione dopo la consultazione di esiti. È idempotente; non permette di riscrivere schedine già liquidate né di scegliere retroattivamente quelle vincenti.
+
+L'occhio invia `POST /api/betting/{scenarioId}/{variant}/{slipId}/reveal`, dove `variant` è `cups` o `league`. Prima del download blocca le scelte e verifica l'identità NFF della partita. Conserva risultato, fonte, esito e importi nella sola tabella `betting_reveal`; né training né liquidazione al taglio leggono questa tabella. Il referto viene richiesto solo dopo kickoff +24 ore rispetto al presente reale. Un risultato mancante produce attesa o errore esplicito, mai un punteggio sostitutivo. La liquidazione simulata avviene al successivo avanzamento che ammette il risultato nel passato.
+
+I referti HTML originali sono archiviati in `.local/data/nff`, con hash e data di acquisizione. La cache può contenere risultati successivi al taglio aperti con l'occhio: questo è previsto, ma devono restare esclusi dallo snapshot del modello. La consultazione salvata viene recuperata riaprendo l'occhio dopo un riavvio. La versione corrente del parser è specifica per NFF Eliteserien 2026; se HTML, calendario o identità non coincidono, interrompe l'operazione.

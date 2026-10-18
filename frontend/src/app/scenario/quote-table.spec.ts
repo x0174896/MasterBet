@@ -74,4 +74,27 @@ describe('Consultazione quote', () => {
     f.detectChanges();
     expect(f.nativeElement.textContent).toContain('Nessuna quota');
   });
+  it('ordina numericamente prima della paginazione, con null sempre in fondo e filtri preservati', () => {
+    const rows = Array.from({ length: 65 }, (_, i) => ({
+      ...quote,
+      outcomeId: `${i}`,
+      expectedReturn: i / 100,
+    }));
+    const f = setup([{ ...quote, outcomeId: 'missing', expectedReturn: null }, ...rows]);
+    const c = f.componentInstance;
+    c.period.set('fulltime');
+    const button = f.nativeElement.querySelector('th button') as HTMLButtonElement;
+    button.click();
+    f.detectChanges();
+    expect(c.visible()[0].expectedReturn).toBe(0.64);
+    expect(c.visible().length).toBe(60);
+    expect(c.filtered().at(-1)?.expectedReturn).toBeNull();
+    expect(button.parentElement?.getAttribute('aria-sort')).toBe('descending');
+    button.click();
+    f.detectChanges();
+    expect(c.visible()[0].expectedReturn).toBe(0);
+    expect(c.filtered().at(-1)?.expectedReturn).toBeNull();
+    expect(c.period()).toBe('fulltime');
+    expect(button.parentElement?.getAttribute('aria-sort')).toBe('ascending');
+  });
 });

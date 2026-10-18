@@ -51,12 +51,34 @@ public class OddsPapiClient {
       }
       if (remaining == null) throw new IllegalStateException("Piano API non disponibile");
     }
-    if (remaining <= reserve)
+    if (!hasBudget(remaining, endpoint.equals("historical-odds") ? 0 : 1, reserve))
       throw new IllegalStateException(
           "Riserva API raggiunta. Importazione sospesa; archivio locale conservato.");
     if (!endpoint.equals("historical-odds")) remaining--;
     JsonNode response = request(endpoint, parameters);
     return response;
+  }
+
+  /** Verifica preventivamente le sole richieste non presenti in cache; account non e fatturato. */
+  public synchronized void preflightFixtures(List<Map<String, String>> requests) {
+    long needed = requests.stream().filter(p -> archive.read("fixtures", p).isEmpty()).count();
+    if (needed == 0) return;
+    var account = request("account", Map.of());
+    remaining = null;
+    for (var s : account.path("subscriptions"))
+      if (s.path("is_active").asBoolean()) {
+        if (!s.path("price").isNull() && s.path("price").asDouble() > 0)
+          throw new IllegalStateException("Consentito solo piano gratuito");
+        remaining = s.path("request_limit").asInt() - s.path("request_count").asInt();
+      }
+    if (remaining == null || !hasBudget(remaining, needed, reserve))
+      throw new IllegalStateException(
+          "Quota gratuita insufficiente per completare lo step; cache conservata");
+  }
+
+  static boolean hasBudget(int remaining, long cost, int reserve) {
+    // Le quote storiche sono gratuite ma il provider richiede un saldo positivo.
+    return remaining > 0 && remaining - cost >= reserve;
   }
 
   private JsonNode request(String endpoint, Map<String, String> parameters) {

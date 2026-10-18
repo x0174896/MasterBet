@@ -40,6 +40,11 @@ class PersistenceApiIntegrationTest {
 
   @AfterEach
   void clean() {
+    jdbc.update("DELETE FROM betting_reveal");
+    jdbc.update("DELETE FROM betting_reveal_lock");
+    jdbc.update("DELETE FROM betting_proposal");
+    jdbc.update("DELETE FROM betting_round");
+    jdbc.update("UPDATE advance_job SET status='IDLE' WHERE singleton=1");
     jdbc.update("DELETE FROM simulation_snapshot");
     jdbc.update("DELETE FROM trained_model");
     jdbc.update("DELETE FROM match_result");
@@ -90,7 +95,9 @@ class PersistenceApiIntegrationTest {
             List.of(),
             List.of(target),
             List.of());
-    var weights = new PoissonModel(new double[] {0}, new double[] {1}, new double[4][2]);
+    var scales = new double[16];
+    java.util.Arrays.fill(scales, 1);
+    var weights = new PoissonModel(new double[16], scales, new double[4][17]);
     var report =
         new ModelReport(
             modelId,
@@ -135,5 +142,152 @@ class PersistenceApiIntegrationTest {
     assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM source_fixture", Integer.class));
     assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM match_result", Integer.class));
     assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM simulation_snapshot", Integer.class));
+  }
+
+  @Test
+  void frozenBetsAreImmutableAndJobClaimIsExclusive() {
+    var s = snapshot("test-model");
+    context.getBean(SnapshotPublisher.class).publish(s);
+    var service = context.getBean(it.masterbet.betting.application.BettingService.class);
+    service.freeze(s, it.masterbet.betting.domain.BettingConfig.defaults());
+    service.freeze(s, it.masterbet.betting.domain.BettingConfig.defaults());
+    assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM betting_round", Integer.class));
+    var jobs = context.getBean(it.masterbet.simulation.infrastructure.AdvanceJobRepository.class);
+    assertTrue(jobs.claim("one", s.id()));
+    assertFalse(jobs.claim("two", s.id()));
+    jobs.update("one", "FAILED", "test");
+    assertTrue(jobs.claim("two", s.id()));
+  }
+
+  @Test
+  void staleAdvanceReturnsConflictWithoutDownload() throws Exception {
+    context.getBean(SnapshotPublisher.class).publish(snapshot("test-model"));
+    var response =
+        HttpClient.newHttpClient()
+            .send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/advance-job"))
+                    .header("Content-Type", "application/json")
+                    .POST(
+                        HttpRequest.BodyPublishers.ofString(
+                            "{\"expectedScenarioId\":\"stale\",\"config\":{\"unitValue\":5,\"initialBankrollUnits\":100,\"maxRoundUnits\":2}}"))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "IDLE",
+        context
+            .getBean(it.masterbet.simulation.infrastructure.AdvanceJobRepository.class)
+            .status()
+            .status());
+  }
+
+  @Test
+  void currentProposalUpgradePreservesOriginalAndCannotRewriteRevealedChoices() {
+    var source = snapshot("test-model");
+    context.getBean(SnapshotPublisher.class).publish(source);
+    var bets = context.getBean(it.masterbet.betting.application.BettingService.class);
+    var repo = context.getBean(it.masterbet.betting.infrastructure.BettingRepository.class);
+    var workspace = context.getBean(it.masterbet.betting.application.BettingWorkspaceService.class);
+    var fresh = bets.prepare(source, it.masterbet.betting.domain.BettingConfig.defaults());
+    var legacy =
+        new it.masterbet.betting.domain.BettingRound(
+            fresh.scenarioId(),
+            fresh.datasetSha256(),
+            fresh.modelId(),
+            fresh.cutoff(),
+            fresh.frozenAt(),
+            fresh.config(),
+            fresh.openingBankroll(),
+            fresh.leagueOpeningBankroll(),
+            fresh.cups(),
+            fresh.league(),
+            null);
+    repo.save(legacy);
+    var original = jdbc.queryForObject("SELECT payload FROM betting_round", String.class);
+    assertTrue(workspace.save(source.id()).frozen());
+    assertEquals("five-slips-v2", repo.find(source.id()).orElseThrow().policyVersion());
+    workspace.save(source.id());
+    assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM betting_proposal", Integer.class));
+    assertEquals(original, jdbc.queryForObject("SELECT payload FROM betting_round", String.class));
+    jdbc.update("DELETE FROM betting_proposal");
+    repo.lockReveal(source.id());
+    assertThrows(
+        org.springframework.web.server.ResponseStatusException.class,
+        () -> workspace.save(source.id()));
+    assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM betting_proposal", Integer.class));
+  }
+
+  @Test
+  void saveApiIsIdempotentAndRejectsStaleScenario() throws Exception {
+    context.getBean(SnapshotPublisher.class).publish(snapshot("test-model"));
+    for (String id : List.of("stale", "eliteserien-2026-round7", "eliteserien-2026-round7")) {
+      var response =
+          HttpClient.newHttpClient()
+              .send(
+                  HttpRequest.newBuilder(
+                          URI.create("http://127.0.0.1:" + port + "/api/betting/save"))
+                      .header("Content-Type", "application/json")
+                      .POST(
+                          HttpRequest.BodyPublishers.ofString(
+                              "{\"expectedScenarioId\":\"" + id + "\"}"))
+                      .build(),
+                  HttpResponse.BodyHandlers.ofString());
+      assertEquals(id.equals("stale") ? 409 : 200, response.statusCode());
+    }
+    assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM betting_round", Integer.class));
+  }
+
+  @Test
+  void invalidJobConfigurationReturnsBadRequestWithoutStartingWork() throws Exception {
+    for (var body :
+        List.of(
+            "{",
+            "{\"expectedScenarioId\":\"step\",\"config\":{\"unitValue\":0,\"initialBankrollUnits\":100,\"maxRoundUnits\":2}}")) {
+      var response =
+          HttpClient.newHttpClient()
+              .send(
+                  HttpRequest.newBuilder(
+                          URI.create("http://127.0.0.1:" + port + "/api/advance-job"))
+                      .header("Content-Type", "application/json")
+                      .POST(HttpRequest.BodyPublishers.ofString(body))
+                      .build(),
+                  HttpResponse.BodyHandlers.ofString());
+      assertEquals(400, response.statusCode());
+      assertFalse(response.body().contains("password"));
+    }
+    assertEquals(
+        "IDLE",
+        context
+            .getBean(it.masterbet.simulation.infrastructure.AdvanceJobRepository.class)
+            .status()
+            .status());
+  }
+
+  @Test
+  void consultedResultsPersistWithoutEnteringTheSnapshotOrMatchResults() {
+    var source = snapshot("test-model");
+    context.getBean(SnapshotPublisher.class).publish(source);
+    context
+        .getBean(it.masterbet.betting.application.BettingService.class)
+        .freeze(source, it.masterbet.betting.domain.BettingConfig.defaults());
+    var before = jdbc.queryForObject("SELECT payload FROM simulation_snapshot", String.class);
+    var repo = context.getBean(it.masterbet.betting.infrastructure.RevealRepository.class);
+    var reveal =
+        new it.masterbet.betting.domain.SlipReveal(
+            source.id(),
+            "cups",
+            "S1",
+            Instant.now(),
+            "LOST",
+            new java.math.BigDecimal("2.00"),
+            new java.math.BigDecimal("0.00"),
+            new java.math.BigDecimal("-2.00"),
+            List.of());
+    repo.save(reveal);
+    assertEquals(reveal, repo.find(source.id(), "cups", "S1").orElseThrow());
+    assertEquals(
+        before, jdbc.queryForObject("SELECT payload FROM simulation_snapshot", String.class));
+    assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM match_result", Integer.class));
+    assertTrue(repo.find(source.id(), "league", "S1").isEmpty());
   }
 }

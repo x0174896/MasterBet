@@ -4,7 +4,9 @@
     <h1>Il futuro, visto dal passato.</h1>
     <p>Una giornata da analizzare. Soltanto i dati già disponibili.</p>
   </div>
-  <span class="scenario-badge">SCENARIO 01 <span>6 → 7</span></span>
+  <span class="scenario-badge"
+    >SIMULAZIONE <span>Step {{ state.data()?.id?.split('round')?.[1] }}</span></span
+  >
 </div>
 @if (state.loading()) {
   <div class="panel p-5 text-center" role="status">
@@ -24,8 +26,8 @@
       <span class="snapshot-label">{{ data.competition }} · {{ data.season }}</span>
       <h2>Fermi al {{ data.cutoff | date: 'dd MMMM yyyy' : 'UTC' }}</h2>
       <p>
-        Taglio alle {{ data.cutoff | date: 'HH:mm' : 'UTC' }} UTC · Dopo la 6ª giornata di
-        calendario
+        Taglio alle {{ data.cutoff | date: 'HH:mm' : 'UTC' }} UTC · Anticipi e rinvii seguono le
+        date effettive
       </p>
     </div>
     <div class="snapshot-lock">
@@ -44,8 +46,8 @@
     </div>
     <div class="col-6 col-lg-3">
       <div class="summary-card">
-        <span>Eventi della 7ª giornata</span><strong>{{ data.matches.length }}</strong
-        ><small>Dal 1 al 4 maggio 2026</small>
+        <span>Eventi del prossimo step</span><strong>{{ data.matches.length }}</strong
+        ><small>Partite nella finestra dello scenario</small>
       </div>
     </div>
     <div class="col-6 col-lg-3">
@@ -56,7 +58,8 @@
     </div>
     <div class="col-6 col-lg-3">
       <div class="summary-card">
-        <span>Campione precedente</span><strong>{{ data.trainingMatches }}</strong
+        <span>Campione del modello</span
+        ><strong>{{ data.model.trainingMatches + data.model.validationMatches }}</strong
         ><small
           >{{ data.model.trainingMatches }} training +
           {{ data.model.validationMatches }} validazione</small
@@ -65,6 +68,13 @@
     </div>
   </div>
   <nav class="view-tabs" aria-label="Sezioni dello scenario">
+    <button
+      [class.active]="tab() === 'betting'"
+      [attr.aria-current]="tab() === 'betting' ? 'page' : null"
+      (click)="tab.set('betting')"
+    >
+      Schedine e avanzamento
+    </button>
     <button
       [class.active]="tab() === 'odds'"
       [attr.aria-current]="tab() === 'odds' ? 'page' : null"
@@ -85,12 +95,15 @@
       Modello e coppe
     </button>
   </nav>
+  @if (tab() === 'betting') {
+    <app-betting-panel (advanced)="state.load()" />
+  }
   @if (tab() === 'odds') {
     <div class="row g-4">
       <aside class="col-lg-3">
         <div class="fixture-list">
           <h2 class="list-heading">
-            7ª giornata <span>{{ data.matches.length }} partite</span>
+            Prossime partite <span>{{ data.matches.length }} eventi</span>
           </h2>
           @for (match of data.matches; track match.fixture.id) {
             <button
@@ -144,7 +157,7 @@
     </div>
   } @else if (tab() === 'stats') {
     <app-statistics-panel [teams]="data.standings" [history]="data.history" />
-  } @else {
+  } @else if (tab() === 'model') {
     <app-model-panel [model]="data.model" [cups]="data.recentCups" [cupResults]="data.cupResults" />
   }
   <details class="provenance">

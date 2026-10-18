@@ -18,9 +18,9 @@ public class ScenarioQueryService {
     this.statistics = statistics;
   }
 
-  private Snapshot load() {
+  public Snapshot load() {
     return repository
-        .find("eliteserien-2026-round7")
+        .latest()
         .orElseThrow(() -> new NoSuchElementException("Scenario non ancora importato"));
   }
 
@@ -74,7 +74,9 @@ public class ScenarioQueryService {
         "2026",
         d.cutoff(),
         s.createdAt(),
-        "OddsPapi · archivio storico",
+        d.id().equals("eliteserien-2026-round7")
+            ? "OddsPapi · archivio storico"
+            : "OddsPapi · quote e calendario; NFF · nuovi risultati ufficiali",
         s.datasetSha256(),
         d.leagueHistory().size(),
         d.trainingHistory().size(),
@@ -86,10 +88,10 @@ public class ScenarioQueryService {
         d.cupResults(),
         model,
         List.of(
-            "Scenario congelato dopo la sesta giornata: anticipi e recuperi seguono la data"
-                + " effettiva. Le squadre hanno da 5 a 7 partite disputate.",
+            "Scenario congelato al taglio indicato: anticipi e recuperi seguono la data effettiva,"
+                + " non il numero di giornata.",
             "Quote: ultimo aggiornamento attivo entro il taglio. Nessuna quota successiva o"
-                + " risultato della settima giornata entra nei calcoli.",
+                + " risultato degli eventi target entra nei calcoli.",
             "Classifica ricostruita dai risultati; nessuna penalizzazione amministrativa"
                 + " applicata.",
             "Orari programmati conservati. Se gli orari effettivi sono incoerenti, i risultati"

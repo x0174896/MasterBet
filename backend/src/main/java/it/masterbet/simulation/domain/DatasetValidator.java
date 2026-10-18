@@ -9,9 +9,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class DatasetValidator {
   public void validate(SimulationDataset data) {
-    if (data.leagueHistory().size() != 47 || data.targets().size() != 8)
+    if (data.id().equals("eliteserien-2026-round7")
+        && (data.leagueHistory().size() != 47 || data.targets().size() != 8))
       throw new IllegalArgumentException(
           "Copertura scenario incompleta: attese 47 partite concluse e 8 eventi futuri");
+    if (data.leagueHistory().size() < 47 || data.targets().isEmpty())
+      throw new IllegalArgumentException("Copertura scenario incompleta");
     if (data.trainingHistory().size() != 80)
       throw new IllegalArgumentException("Campione addestramento incompleto: attese 80 partite");
     Set<String> seen = new HashSet<>();

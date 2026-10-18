@@ -1,0 +1,237 @@
+<section class="panel p-4 mb-4">
+  <h2>Schedine e avanzamento</h2>
+  <p>
+    Simulazione storica a puntate fisse. Le probabilità e il valore atteso sono stime: nessuna
+    vincita garantita.
+  </p>
+  @if (error()) {
+    <div class="alert alert-warning" role="alert">
+      {{ error() }} <button class="btn btn-sm btn-outline-dark" (click)="load()">Riprova</button>
+    </div>
+  }
+  @if (view(); as v) {
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label" for="unit">Valore unità (€), prossimo step</label
+        ><input
+          id="unit"
+          class="form-control"
+          type="number"
+          min="0.04"
+          max="10000"
+          step="0.01"
+          [(ngModel)]="unitValue"
+          [disabled]="busy()"
+        />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="capital">Capitale iniziale (unità)</label
+        ><input
+          id="capital"
+          class="form-control"
+          type="number"
+          min="1"
+          max="100000"
+          [(ngModel)]="initialBankrollUnits"
+          [disabled]="busy() || v.frozen"
+        />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="cap">Limite per step (unità)</label
+        ><input
+          id="cap"
+          class="form-control"
+          type="number"
+          min="0.25"
+          max="2"
+          step="0.25"
+          [(ngModel)]="maxRoundUnits"
+          [disabled]="busy()"
+        />
+      </div>
+    </div>
+    <button class="btn btn-primary" (click)="advance()" [disabled]="busy()">
+      {{ busy() ? 'Job in corso…' : 'Avanza uno step e calcola le schedine' }}
+    </button>
+    <p class="small text-secondary mt-2">
+      Un unico job: congelamento delle scelte → download risultati e quote → controlli →
+      addestramento → nuove schedine. Il capitale non viene reintegrato automaticamente.
+    </p>
+    @if (job(); as j) {
+      <div
+        class="alert mt-3"
+        [class.alert-info]="j.status !== 'FAILED'"
+        [class.alert-warning]="j.status === 'FAILED'"
+        role="status"
+      >
+        {{ j.message }}
+      </div>
+    }
+    <hr />
+    <div class="d-flex gap-2 mb-3" role="group" aria-label="Modello delle schedine">
+      <button
+        class="btn btn-outline-primary"
+        [class.active]="model() === 'cups'"
+        [attr.aria-pressed]="model() === 'cups'"
+        (click)="model.set('cups')"
+      >
+        Con coppe
+      </button>
+      <button
+        class="btn btn-outline-primary"
+        [class.active]="model() === 'league'"
+        [attr.aria-pressed]="model() === 'league'"
+        (click)="model.set('league')"
+      >
+        Solo campionato
+      </button>
+    </div>
+    <p class="small">
+      {{
+        v.frozen
+          ? 'Ultime schedine salvate'
+          : 'Anteprima: salva le schedine prima di consultare gli esiti'
+      }}
+      · {{ stepLabel(v.current.scenarioId) }} · Taglio
+      {{ v.current.cutoff | date: 'dd/MM/yyyy HH:mm' : 'UTC' }} UTC · 1 unità =
+      {{ v.current.config.unitValue | currency: 'EUR' }}
+    </p>
+    <p class="small">
+      Obiettivo: cinque schedine, entro due unità. Quattro singole da 0,4 u e una doppia da 0,25 u;
+      con cinque sole partite idonee, cinque singole da 0,4 u. Se quote o capitale non bastano, le
+      proposte saranno meno di cinque.
+    </p>
+    @if (!v.frozen || v.current.policyVersion !== 'five-slips-v2') {
+      <button class="btn btn-outline-primary mb-3" (click)="save()" [disabled]="busy()">
+        Salva le proposte della giornata
+      </button>
+    }
+    <div class="row g-3">
+      @for (slip of v.current[model()]; track slip.id) {
+        <article class="col-lg-6">
+          <div class="border rounded p-3 h-100">
+            <h3 class="h5">
+              {{ slip.kind === 'SINGLE' ? 'Singola' : 'Doppia simulata' }} {{ slip.id }} ·
+              {{ slip.bookmaker }}
+            </h3>
+            @for (leg of slip.legs; track leg.quote.fixtureId) {
+              <p>
+                <strong>{{ leg.home }} – {{ leg.away }}</strong
+                ><br />{{ leg.kickoff | date: 'dd/MM HH:mm' : 'UTC' }} UTC<br />{{
+                  leg.quote.market.name
+                }}:
+                <strong
+                  >{{ leg.quote.outcome }}
+                  @if (
+                    leg.quote.market.type.startsWith('totals') ||
+                    leg.quote.market.type.startsWith('teamtotals')
+                  ) {
+                    {{ leg.quote.market.line | number: '1.1-2' }}
+                  }
+                </strong>
+                @ {{ leg.quote.price | number: '1.2-3' }}<br /><small
+                  >{{ periodLabel(leg.quote.market.period) }} · Quota aggiornata
+                  {{ leg.quote.observedAt | date: 'dd/MM HH:mm' : 'UTC' }} UTC</small
+                >
+              </p>
+            }
+            <dl class="row mb-1">
+              <dt class="col-7">Puntata virtuale</dt>
+              <dd class="col-5">{{ slip.units }} u · {{ slip.stake | currency: 'EUR' }}</dd>
+              <dt class="col-7">Quota {{ slip.kind === 'DOUBLE' ? 'calcolata' : 'reale' }}</dt>
+              <dd class="col-5">{{ slip.price | number: '1.2-4' }}</dd>
+              <dt class="col-7">Probabilità stimata</dt>
+              <dd class="col-5">{{ slip.probability | percent: '1.1-1' }}</dd>
+              <dt class="col-7">Valore atteso</dt>
+              <dd class="col-5">{{ slip.expectedReturn | percent: '1.1-1' }}</dd>
+              <dt class="col-7">Ritorno lordo se vince</dt>
+              <dd class="col-5">{{ slip.potentialPayout | currency: 'EUR' }}</dd>
+              <dt class="col-7">Utile netto se vince</dt>
+              <dd class="col-5">{{ slip.potentialProfit | currency: 'EUR' }}</dd>
+            </dl>
+            <small class="text-secondary">{{ slip.rationale }}</small>
+            @if (v.frozen && v.current.policyVersion === 'five-slips-v2') {
+              <div>
+                <app-slip-result
+                  [scenario]="v.current.scenarioId"
+                  [variant]="model()"
+                  [slip]="slip.id"
+                />
+              </div>
+            }
+          </div>
+        </article>
+      } @empty {
+        <p>
+          Nessuna schedina rispetta i criteri e il capitale disponibile. Nessuna puntata forzata.
+        </p>
+      }
+    </div>
+    @let evaluation = v[model()];
+    <h3 class="h5 mt-4">
+      Bilancio virtuale · {{ model() === 'cups' ? 'con coppe' : 'solo campionato' }}
+    </h3>
+    <p>
+      Capitale: <strong>{{ evaluation.bankroll | currency: 'EUR' }}</strong> · Disponibile:
+      {{ evaluation.available | currency: 'EUR' }} · Impegnato:
+      {{ evaluation.pendingStake | currency: 'EUR' }}
+    </p>
+    <p>
+      Profitto liquidato: {{ evaluation.profit | currency: 'EUR' }} · ROI:
+      {{ evaluation.roi === null ? 'Non disponibile' : (evaluation.roi | percent: '1.1-1') }} ·
+      Perdita massima dal picco a fine step: {{ evaluation.maxDrawdown | currency: 'EUR' }}
+    </p>
+    <p class="small">
+      Singole: {{ evaluation.singlesProfit | currency: 'EUR' }} · Doppie:
+      {{ evaluation.doublesProfit | currency: 'EUR' }} · Brier binario sulle sole selezioni risolte:
+      {{
+        evaluation.binaryBrier === null
+          ? 'Non disponibile'
+          : (evaluation.binaryBrier | number: '1.4-4')
+      }}
+      ({{ evaluation.resolvedLegs }} esiti). Non è una validazione di tutti i mercati.
+    </p>
+    <div class="table-responsive">
+      <table class="table">
+        <caption>
+          Storico delle puntate congelate. Esiti non disponibili restano in attesa, senza inventare
+          rimborsi.
+        </caption>
+        <thead>
+          <tr>
+            <th>Step / schedina</th>
+            <th>Stato</th>
+            <th>Puntata</th>
+            <th>Ritorno</th>
+            <th>Netto</th>
+            <th>Risultati esatti</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of evaluation.slips; track row.scenarioId + row.slipId) {
+            <tr>
+              <td>{{ stepLabel(row.scenarioId) }} / {{ row.slipId }}</td>
+              <td>
+                {{
+                  row.status === 'PENDING' ? 'In attesa' : row.status === 'WON' ? 'Vinta' : 'Persa'
+                }}
+              </td>
+              <td>{{ row.stake | currency: 'EUR' }}</td>
+              <td>{{ row.payout === null ? '—' : (row.payout | currency: 'EUR') }}</td>
+              <td>{{ row.profit === null ? '—' : (row.profit | currency: 'EUR') }}</td>
+              <td>
+                @if (v.frozen) {
+                  <app-slip-result
+                    [scenario]="row.scenarioId"
+                    [variant]="model()"
+                    [slip]="row.slipId"
+                  />
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

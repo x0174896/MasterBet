@@ -1,0 +1,76 @@
+<button
+  class="btn btn-sm btn-outline-primary mt-2"
+  (click)="toggle()"
+  [disabled]="loading()"
+  [attr.aria-expanded]="expanded()"
+  [attr.aria-label]="(expanded() ? 'Nascondi' : 'Mostra') + ' esito schedina ' + slip()"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.8"
+    aria-hidden="true"
+  >
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+  {{ loading() ? 'Verifica…' : expanded() ? 'Nascondi esito' : 'Mostra esito' }}
+</button>
+@if (expanded()) {
+  <div class="mt-3 p-3 bg-body-tertiary rounded" aria-live="polite">
+    @if (error()) {
+      <p class="text-danger" role="alert">{{ error() }}</p>
+    }
+    @if (result(); as r) {
+      <h4 class="h6">
+        {{
+          r.status === 'WON'
+            ? 'Schedina vinta'
+            : r.status === 'LOST'
+              ? 'Schedina persa'
+              : 'Schedina in attesa'
+        }}
+      </h4>
+      @for (row of r.results; track row.leg.quote.fixtureId) {
+        <div class="mb-3">
+          <strong>{{ row.leg.home }} – {{ row.leg.away }}</strong>
+          <p class="small mb-1">
+            {{ row.leg.quote.market.name }}: {{ row.leg.quote.outcome }}
+            @if (
+              row.leg.quote.market.type.startsWith('totals') ||
+              row.leg.quote.market.type.startsWith('teamtotals')
+            ) {
+              {{ row.leg.quote.market.line | number: '1.1-2' }}
+            }
+          </p>
+          @if (row.score; as s) {
+            <p class="mb-1">
+              Primo tempo: <strong>{{ s.homeHt }}–{{ s.awayHt }}</strong> · Secondo tempo:
+              <strong>{{ s.homeFt - s.homeHt }}–{{ s.awayFt - s.awayHt }}</strong> · Finale (90′):
+              <strong>{{ s.homeFt }}–{{ s.awayFt }}</strong>
+            </p>
+            <span [class.text-success]="row.won" [class.text-danger]="!row.won">{{
+              row.won ? 'Selezione vincente' : 'Selezione perdente'
+            }}</span>
+            · <a [href]="row.source" target="_blank" rel="noopener noreferrer">Referto NFF</a>
+          } @else {
+            <p>Risultato non ancora disponibile.</p>
+          }
+        </div>
+      }
+      <p class="mb-1">
+        Puntata: {{ r.stake | currency: 'EUR' }} · Ritorno lordo:
+        {{ r.payout === null ? '—' : (r.payout | currency: 'EUR') }} · Netto:
+        <strong>{{ r.profit === null ? '—' : (r.profit | currency: 'EUR') }}</strong>
+      </p>
+      <p class="small text-secondary mb-0">
+        Esito storico salvato il {{ r.checkedAt | date: 'dd/MM/yyyy HH:mm' }}. La consultazione non
+        avanza il taglio e non liquida il capitale della simulazione.
+      </p>
+    }
+  </div>
+}

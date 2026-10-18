@@ -6,7 +6,7 @@
         <h2>Quattro modelli per i gol</h2>
         <p>
           Regressioni di Poisson per casa e trasferta, primo e secondo tempo. L’addestramento
-          precede il campionato simulato.
+          usa soltanto partite precedenti al taglio dello scenario.
         </p>
       </div>
       <div class="p-4 pt-0">
@@ -57,8 +57,9 @@
           <strong>Come leggere il risultato</strong>
           <p>{{ model().limitation }}</p>
           <p class="mb-0">
-            I suggerimenti della settima giornata usano il modello con coppe, anche se il confronto
-            mostra prestazioni peggiori: nessuna selezione del modello usando risultati futuri.
+            La tabella quote usa il modello con coppe. Nella vista schedine puoi confrontare i due
+            modelli con le stesse regole di puntata e bilanci separati. Nessuna selezione del modello
+            in base ai risultati futuri.
           </p>
         </div>
         <details class="mt-4">

@@ -24,12 +24,37 @@ public class OddsPapiFixtureDownloader implements FixtureSource {
     return download("participantId", String.valueOf(id), from, to);
   }
 
+  public List<Fixture> sport(Instant from, Instant to) {
+    if (!from.isBefore(to) || java.time.Duration.between(from, to).toDays() >= 10)
+      throw new IllegalArgumentException("Intervallo calendario aggregato non valido");
+    return download("sportId", "10", from, to);
+  }
+
   private List<Fixture> download(String filter, String id, Instant from, Instant to) {
     var data =
         client.get("fixtures", Map.of(filter, id, "from", from.toString(), "to", to.toString()));
+    return parseList(data, null);
+  }
+
+  public List<Fixture> teamsCalendar(Set<Long> teams, Instant from, Instant to) {
+    if (teams.isEmpty()
+        || !from.isBefore(to)
+        || java.time.Duration.between(from, to).toDays() >= 10)
+      throw new IllegalArgumentException("Intervallo o squadre del calendario non validi");
+    return parseList(
+        client.get(
+            "fixtures", Map.of("sportId", "10", "from", from.toString(), "to", to.toString())),
+        teams);
+  }
+
+  private List<Fixture> parseList(JsonNode data, Set<Long> teams) {
     if (!data.isArray()) throw new IllegalArgumentException("Elenco partite non valido");
     Map<String, Fixture> fixtures = new LinkedHashMap<>();
     for (var f : data) {
+      // Una risposta globale include migliaia di eventi estranei: delimita prima il dominio.
+      if (teams != null
+          && !teams.contains(f.path("participant1Id").asLong())
+          && !teams.contains(f.path("participant2Id").asLong())) continue;
       if (f.path("sportId").asInt() != 10) throw new IllegalArgumentException("Sport inatteso");
       if (f.path("statusName").asText().equals("Cancelled")) continue;
       Fixture fixture = parse(f);
