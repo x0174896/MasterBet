@@ -1,0 +1,4 @@
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0">
+  <localRepository>${user.dir}/../.local/m2</localRepository>
+  <mirrors><mirror><id>masterbet-central</id><mirrorOf>*</mirrorOf><url>https://repo.maven.apache.org/maven2</url></mirror></mirrors>
+</settings>

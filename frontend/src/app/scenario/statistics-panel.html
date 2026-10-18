@@ -1,0 +1,89 @@
+<section class="panel mb-4">
+  <div class="panel-heading">
+    <h2>Il campionato al taglio temporale</h2>
+    <p>
+      Punti e gol ricostruiti dalle partite effettivamente concluse. GF / GS = gol fatti / subiti.
+    </p>
+  </div>
+  <div class="table-responsive">
+    <table class="table align-middle statistics-table mb-0">
+      <caption class="visually-hidden">
+        Classifica, statistiche per tempo e rendimento in casa e trasferta
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Squadra</th>
+          <th scope="col">PG</th>
+          <th scope="col">Pt</th>
+          <th scope="col">V / N / P</th>
+          <th scope="col">Gol FT</th>
+          <th scope="col">Gol 1T</th>
+          <th scope="col">Gol 2T</th>
+          <th scope="col">Casa · Pt / PG</th>
+          <th scope="col">Fuori · Pt / PG</th>
+          <th scope="col">Ultime 5</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (team of teams(); track team.teamId; let i = $index) {
+          <tr>
+            <td>
+              <span class="rank">{{ i + 1 }}</span
+              ><strong>{{ team.team }}</strong>
+            </td>
+            <td>{{ team.played }}</td>
+            <td>
+              <strong>{{ team.points }}</strong>
+            </td>
+            <td>{{ team.won }} / {{ team.drawn }} / {{ team.lost }}</td>
+            <td>{{ team.goalsFor }} / {{ team.goalsAgainst }}</td>
+            <td>{{ team.firstHalfFor }} / {{ team.firstHalfAgainst }}</td>
+            <td>{{ team.secondHalfFor }} / {{ team.secondHalfAgainst }}</td>
+            <td>{{ team.homePoints }} / {{ team.homePlayed }}</td>
+            <td>{{ team.awayPoints }} / {{ team.awayPlayed }}</td>
+            <td class="form-sequence">{{ team.form }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class="panel-footnote">
+    Il numero di incontri varia per anticipi e recuperi. Forma: V vittoria, N pareggio, P sconfitta;
+    da sinistra la più lontana alla più recente. Nessuna penalizzazione amministrativa applicata.
+  </p>
+</section>
+<section class="panel">
+  <div class="panel-heading">
+    <h2>Registro delle {{ history().length }} partite</h2>
+    <p>Secondo tempo = finale a 90 minuti − primo tempo. I supplementari sono esclusi.</p>
+  </div>
+  <div class="table-responsive">
+    <table class="table mb-0">
+      <caption class="visually-hidden">
+        Risultati storici per partita e tempo
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Calcio d’inizio UTC</th>
+          <th scope="col">Partita</th>
+          <th scope="col">1° tempo</th>
+          <th scope="col">2° tempo</th>
+          <th scope="col">Finale 90′</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (m of history(); track m.fixture.id) {
+          <tr>
+            <td>{{ m.fixture.kickoff | date: 'dd/MM/yyyy HH:mm' : 'UTC' }}</td>
+            <td>{{ m.fixture.home }} <span class="text-secondary">—</span> {{ m.fixture.away }}</td>
+            <td>{{ m.score.homeHt }} : {{ m.score.awayHt }}</td>
+            <td>{{ m.score.homeFt - m.score.homeHt }} : {{ m.score.awayFt - m.score.awayHt }}</td>
+            <td>
+              <strong>{{ m.score.homeFt }} : {{ m.score.awayFt }}</strong>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</section>

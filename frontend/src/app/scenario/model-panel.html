@@ -1,0 +1,121 @@
+<div class="row g-4">
+  <div class="col-lg-7">
+    <section class="panel h-100">
+      <div class="panel-heading">
+        <span class="eyebrow">Addestramento reale</span>
+        <h2>Quattro modelli per i gol</h2>
+        <p>
+          Regressioni di Poisson per casa e trasferta, primo e secondo tempo. L’addestramento
+          precede il campionato simulato.
+        </p>
+      </div>
+      <div class="p-4 pt-0">
+        <div class="training-timeline">
+          <div>
+            <strong>{{ model().trainingMatches }} partite · training</strong
+            ><span
+              >{{ model().trainingFrom | date: 'dd/MM/yyyy' : 'UTC' }} →
+              {{ model().trainingThrough | date: 'dd/MM/yyyy' : 'UTC' }}</span
+            >
+          </div>
+          <div>
+            <strong>{{ model().validationMatches }} partite · validazione</strong
+            ><span
+              >{{ model().validationFrom | date: 'dd/MM/yyyy' : 'UTC' }} →
+              {{ model().validationThrough | date: 'dd/MM/yyyy' : 'UTC' }}</span
+            >
+          </div>
+        </div>
+        <h3 class="h6 mt-4">Confronto sulla validazione storica 1 X 2</h3>
+        <p class="small text-secondary">
+          Brier score multicategoria (somma sui tre esiti): più basso è meglio. La validazione non
+          entra nell’addestramento dei pesi.
+        </p>
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Metodo</th>
+              <th scope="col">Brier score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Base statistica, ultime 5 partite</td>
+              <td>{{ model().baselineBrier | number: '1.4-4' }}</td>
+            </tr>
+            <tr>
+              <td>Modello con solo campionato</td>
+              <td>{{ model().leagueModelBrier | number: '1.4-4' }}</td>
+            </tr>
+            <tr class="signal-row">
+              <td>Modello con calendario e coppe</td>
+              <td>{{ model().cupsModelBrier | number: '1.4-4' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="research-note">
+          <strong>Come leggere il risultato</strong>
+          <p>{{ model().limitation }}</p>
+          <p class="mb-0">
+            I suggerimenti della settima giornata usano il modello con coppe, anche se il confronto
+            mostra prestazioni peggiori: nessuna selezione del modello usando risultati futuri.
+          </p>
+        </div>
+        <details class="mt-4">
+          <summary>Variabili usate dal modello ({{ model().features.length }})</summary>
+          <ul class="feature-list mt-3">
+            @for (feature of model().features; track feature) {
+              <li>
+                <code>{{ feature }}</code>
+              </li>
+            }
+          </ul>
+        </details>
+      </div>
+    </section>
+  </div>
+  <div class="col-lg-5">
+    <section class="panel h-100">
+      <div class="panel-heading">
+        <span class="eyebrow">Carico e recupero</span>
+        <h2>Oltre il campionato</h2>
+        <p>
+          Partite ufficiali di coppa concluse nei 30 giorni prima del taglio. Il modello considera
+          riposo, frequenza degli incontri e trasferte.
+        </p>
+      </div>
+      <div class="px-4 pb-4">
+        @for (f of cups(); track f.id) {
+          <div class="cup-event">
+            <span class="small text-secondary"
+              >{{ f.kickoff | date: 'dd MMM yyyy' : 'UTC' }} · {{ f.competition }}</span
+            ><strong>{{ f.home }} — {{ f.away }}</strong>
+          </div>
+        } @empty {
+          <p>Nessuna partita di coppa presente in questa finestra.</p>
+        }
+        <h3 class="h6 mt-4">Risultati di coppa verificati nel campione</h3>
+        @for (m of cupResults(); track m.fixture.id) {
+          <p class="small">
+            {{ m.fixture.home }} — {{ m.fixture.away }}<br />1T {{ m.score.homeHt }}:{{
+              m.score.awayHt
+            }}
+            · 90′ {{ m.score.homeFt }}:{{ m.score.awayFt }}
+            @if (m.score.extraTime) {
+              <span class="period-chip">Supplementari disputati</span>
+            }
+          </p>
+        }
+        <p class="small text-secondary mt-4 mb-0">
+          La copertura dipende dal provider. Le amichevoli sono escluse. Distanze di viaggio,
+          formazioni e infortuni non sono stimati. I gol del modello provengono dal campionato; le
+          coppe aggiungono il contesto del calendario.
+        </p>
+        <p class="small text-secondary mt-3 mb-0">
+          Il contesto usa solo incontri già conclusi al taglio. Gli impegni programmati fra il
+          taglio e la partita prevista non sono inclusi nella stima del carico.
+        </p>
+      </div>
+    </section>
+  </div>
+</div>

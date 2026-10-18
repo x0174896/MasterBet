@@ -1,0 +1,25 @@
+package it.masterbet.statistics.domain;
+
+public record TeamStatistics(
+    long teamId,
+    String team,
+    int played,
+    int won,
+    int drawn,
+    int lost,
+    int points,
+    int goalsFor,
+    int goalsAgainst,
+    int firstHalfFor,
+    int firstHalfAgainst,
+    int secondHalfFor,
+    int secondHalfAgainst,
+    int homePlayed,
+    int awayPlayed,
+    int homePoints,
+    int awayPoints,
+    int homeGoalsFor,
+    int homeGoalsAgainst,
+    int awayGoalsFor,
+    int awayGoalsAgainst,
+    String form) {}

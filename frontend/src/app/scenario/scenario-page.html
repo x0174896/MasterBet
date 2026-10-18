@@ -1,0 +1,167 @@
+<div class="page-intro">
+  <div>
+    <span class="eyebrow">Simulazione storica / Prima versione</span>
+    <h1>Il futuro, visto dal passato.</h1>
+    <p>Una giornata da analizzare. Soltanto i dati già disponibili.</p>
+  </div>
+  <span class="scenario-badge">SCENARIO 01 <span>6 → 7</span></span>
+</div>
+@if (state.loading()) {
+  <div class="panel p-5 text-center" role="status">
+    <span class="spinner-border spinner-border-sm me-2"></span>Caricamento dello scenario
+    verificato…
+  </div>
+}
+@if (state.error()) {
+  <div class="alert alert-warning" role="alert">
+    <p>{{ state.error() }}</p>
+    <button class="btn btn-primary btn-sm" (click)="state.load()">Riprova</button>
+  </div>
+}
+@if (state.data(); as data) {
+  <section class="snapshot-banner">
+    <div>
+      <span class="snapshot-label">{{ data.competition }} · {{ data.season }}</span>
+      <h2>Fermi al {{ data.cutoff | date: 'dd MMMM yyyy' : 'UTC' }}</h2>
+      <p>
+        Taglio alle {{ data.cutoff | date: 'HH:mm' : 'UTC' }} UTC · Dopo la 6ª giornata di
+        calendario
+      </p>
+    </div>
+    <div class="snapshot-lock">
+      <span class="lock-icon" aria-hidden="true">◷</span>
+      <div>
+        <strong>Fotografia congelata</strong><span>Risultati futuri esclusi dai calcoli</span>
+      </div>
+    </div>
+  </section>
+  <div class="row g-3 summary-grid">
+    <div class="col-6 col-lg-3">
+      <div class="summary-card">
+        <span>Partite concluse</span><strong>{{ data.historicalMatches }}</strong
+        ><small>Gol primo tempo, secondo e finale</small>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="summary-card">
+        <span>Eventi della 7ª giornata</span><strong>{{ data.matches.length }}</strong
+        ><small>Dal 1 al 4 maggio 2026</small>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="summary-card">
+        <span>Quote storiche attive</span><strong>{{ data.quoteCount | number }}</strong
+        ><small>Ultimo prezzo entro il taglio</small>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="summary-card">
+        <span>Campione precedente</span><strong>{{ data.trainingMatches }}</strong
+        ><small
+          >{{ data.model.trainingMatches }} training +
+          {{ data.model.validationMatches }} validazione</small
+        >
+      </div>
+    </div>
+  </div>
+  <nav class="view-tabs" aria-label="Sezioni dello scenario">
+    <button
+      [class.active]="tab() === 'odds'"
+      [attr.aria-current]="tab() === 'odds' ? 'page' : null"
+      (click)="tab.set('odds')"
+    >
+      Quote e suggerimenti <span>{{ data.matches.length }}</span></button
+    ><button
+      [class.active]="tab() === 'stats'"
+      [attr.aria-current]="tab() === 'stats' ? 'page' : null"
+      (click)="tab.set('stats')"
+    >
+      Statistiche e risultati</button
+    ><button
+      [class.active]="tab() === 'model'"
+      [attr.aria-current]="tab() === 'model' ? 'page' : null"
+      (click)="tab.set('model')"
+    >
+      Modello e coppe
+    </button>
+  </nav>
+  @if (tab() === 'odds') {
+    <div class="row g-4">
+      <aside class="col-lg-3">
+        <div class="fixture-list">
+          <h2 class="list-heading">
+            7ª giornata <span>{{ data.matches.length }} partite</span>
+          </h2>
+          @for (match of data.matches; track match.fixture.id) {
+            <button
+              class="fixture-button"
+              [class.selected]="state.selected()?.fixture?.id === match.fixture.id"
+              [attr.aria-pressed]="state.selected()?.fixture?.id === match.fixture.id"
+              (click)="state.select(match)"
+            >
+              <span class="fixture-date"
+                >{{ match.fixture.kickoff | date: 'dd MMM · HH:mm' : 'UTC' }} UTC</span
+              ><strong>{{ match.fixture.home }}</strong
+              ><strong>{{ match.fixture.away }}</strong
+              ><span class="fixture-meta"
+                >{{ match.markets }} mercati <span>{{ match.quotes }} quote →</span></span
+              >
+            </button>
+          }
+        </div>
+      </aside>
+      <div class="col-lg-9">
+        <section class="panel">
+          @if (state.selected(); as match) {
+            <div class="panel-heading quote-heading">
+              <div>
+                <span class="eyebrow">Mercati prepartita · Archivio reale</span>
+                <h2>
+                  {{ match.fixture.home }} <span class="versus">vs</span> {{ match.fixture.away }}
+                </h2>
+                <p>{{ match.fixture.kickoff | date: 'dd MMMM yyyy · HH:mm' : 'UTC' }} UTC</p>
+              </div>
+              <span class="soft-badge">{{ match.modelledOutcomes }} esiti modellati</span>
+            </div>
+          }
+          @if (state.quotesLoading()) {
+            <div class="p-5 text-center" role="status">Caricamento delle quote…</div>
+          } @else if (state.quotesError()) {
+            <div class="p-4" role="alert">
+              <p>{{ state.quotesError() }}</p>
+              <button
+                class="btn btn-outline-primary btn-sm"
+                (click)="state.select(state.selected()!)"
+              >
+                Riprova
+              </button>
+            </div>
+          } @else {
+            <app-quote-table [quotes]="state.quotes()" />
+          }
+        </section>
+      </div>
+    </div>
+  } @else if (tab() === 'stats') {
+    <app-statistics-panel [teams]="data.standings" [history]="data.history" />
+  } @else {
+    <app-model-panel [model]="data.model" [cups]="data.recentCups" [cupResults]="data.cupResults" />
+  }
+  <details class="provenance">
+    <summary>Provenienza, integrità e limiti dei dati</summary>
+    <div class="pt-3">
+      <ul>
+        @for (note of data.notes; track note) {
+          <li>{{ note }}</li>
+        }
+      </ul>
+      <p>
+        Fonte: {{ data.source }} · Importato il
+        {{ data.importedAt | date: 'dd/MM/yyyy HH:mm' : 'UTC' }} UTC
+      </p>
+      <p class="mb-0 small">
+        SHA-256 dello scenario: <code class="hash">{{ data.datasetSha256 }}</code>
+      </p>
+    </div>
+  </details>
+}

@@ -1,0 +1,145 @@
+<div class="quote-filters row g-3 align-items-end">
+  <div class="col-6 col-xl-3">
+    <label for="bookmaker" class="form-label">Bookmaker</label
+    ><select
+      id="bookmaker"
+      class="form-select form-select-sm"
+      [ngModel]="bookmaker()"
+      (ngModelChange)="bookmaker.set($event); limit.set(60)"
+    >
+      <option value="">Tutti</option>
+      @for (book of bookmakers(); track book) {
+        <option [value]="book">{{ book }}</option>
+      }
+    </select>
+  </div>
+  <div class="col-6 col-xl-3">
+    <label for="period" class="form-label">Periodo</label
+    ><select
+      id="period"
+      class="form-select form-select-sm"
+      [ngModel]="period()"
+      (ngModelChange)="period.set($event); limit.set(60)"
+    >
+      <option value="">Tutti i periodi</option>
+      <option value="fulltime">Finale</option>
+      <option value="p1">1° tempo</option>
+      <option value="p2">2° tempo</option>
+    </select>
+  </div>
+  <div class="col-12 col-xl-4">
+    <label for="family" class="form-label">Mercato</label
+    ><select
+      id="family"
+      class="form-select form-select-sm"
+      [ngModel]="family()"
+      (ngModelChange)="family.set($event); limit.set(60)"
+    >
+      <option value="">Tutti i mercati</option>
+      @for (type of families(); track type) {
+        <option [value]="type">{{ familyLabel(type) }}</option>
+      }
+    </select>
+  </div>
+  <div class="col-12 col-xl-2">
+    <div class="form-check form-switch">
+      <input
+        id="suggested"
+        class="form-check-input"
+        type="checkbox"
+        [checked]="suggestionsOnly()"
+        (change)="suggestionsOnly.set($any($event.target).checked); limit.set(60)"
+      /><label class="form-check-label small" for="suggested">Solo segnali</label>
+    </div>
+  </div>
+</div>
+<div class="d-flex justify-content-between align-items-center px-3 py-3 small text-secondary">
+  <span aria-live="polite">{{ filtered().length }} esiti · {{ visible().length }} visualizzati</span
+  ><span>Orari in UTC</span>
+</div>
+<div class="table-responsive">
+  <table class="table quote-table align-middle mb-0">
+    <caption class="visually-hidden">
+      Quote storiche e probabilità stimate dal modello
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Mercato / esito</th>
+        <th scope="col">Quota reale</th>
+        <th scope="col">Prob. modello</th>
+        <th scope="col">Prob. base</th>
+        <th scope="col">Valore atteso</th>
+        <th scope="col">Ultimo aggiornamento</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (q of visible(); track q.bookmaker + ':' + q.marketId + ':' + q.outcomeId) {
+        <tr [class.signal-row]="q.suggested">
+          <td>
+            <span class="market-label">{{ q.market }}</span
+            ><strong
+              >{{ q.outcome }}
+              @if (hasLine(q)) {
+                {{ q.line | number: '1.0-2' }}
+              }
+            </strong>
+            <span class="period-chip">{{ periodLabel(q.period) }}</span
+            ><small class="d-block text-secondary">{{ q.bookmaker }}</small>
+          </td>
+          <td>
+            <strong class="odd-number">{{ q.price | number: '1.2-3' }}</strong>
+          </td>
+          <td>
+            @if (q.probability !== null) {
+              {{ q.probability | percent: '1.1-1' }}
+            } @else {
+              <span title="Mercato non supportato dal modello">—</span>
+            }
+          </td>
+          <td>
+            @if (q.baselineProbability !== null) {
+              {{ q.baselineProbability | percent: '1.1-1' }}
+            } @else {
+              —
+            }
+          </td>
+          <td>
+            @if (q.expectedReturn !== null) {
+              <span [class.positive]="q.suggested"
+                >{{ q.expectedReturn > 0 ? '+' : ''
+                }}{{ q.expectedReturn | percent: '1.1-1' }}</span
+              >
+              @if (q.suggested) {
+                <small class="d-block signal-label">Segnale sperimentale</small>
+              }
+            } @else {
+              <small class="text-secondary">Non modellato</small>
+            }
+          </td>
+          <td class="date-cell">
+            {{ q.observedAt | date: 'dd/MM/yyyy' : 'UTC' }}<br /><span class="text-secondary"
+              >{{ q.observedAt | date: 'HH:mm:ss' : 'UTC' }} UTC</span
+            >
+          </td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="6" class="text-center py-5 text-secondary">
+            Nessuna quota corrisponde ai filtri selezionati.
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+@if (visible().length < filtered().length) {
+  <div class="text-center py-3">
+    <button class="btn btn-outline-primary btn-sm" (click)="showMore()">
+      Mostra altri 60 esiti
+    </button>
+  </div>
+}
+<p class="panel-footnote">
+  Segnale: valore atteso stimato ≥ 5%. Calcolo: probabilità × quota − 1. Non è un profitto
+  osservato. I mercati non supportati mantengono la quota originale, senza una previsione.
+</p>
