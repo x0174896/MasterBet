@@ -9,6 +9,6 @@ Prima versione: **Eliteserien 2026**, taglio **29 aprile 2026, ore 12:00 UTC** (
 - PostgreSQL locale dedicato; dati e chiavi esclusi da Git.
 - Downloader separati per calendario, risultati, catalogo mercati e quote storiche; interfacce sostituibili.
 
-Doppio clic su **`dev-local.bat`** per avviare frontend su http://127.0.0.1:4200 e backend su http://127.0.0.1:8080. Prerequisiti, arresto e verifiche in [setup.md](setup.md). Funzionalità e limiti in [PROJECT_FEATURES.md](PROJECT_FEATURES.md). Metodo e controlli sui dati in [docs/DATA_AND_MODEL.md](docs/DATA_AND_MODEL.md).
+Doppio clic su **`dev-local.bat`** per aprire due console con i log: frontend su http://127.0.0.1:4200 e backend su http://127.0.0.1:8080. Chiudendo una console si arresta soltanto il relativo servizio. Prerequisiti, arresto e verifiche in [setup.md](setup.md). Funzionalità e limiti in [PROJECT_FEATURES.md](PROJECT_FEATURES.md). Metodo e controlli sui dati in [docs/DATA_AND_MODEL.md](docs/DATA_AND_MODEL.md).
 
 L'applicazione mostra un esperimento su dati storici. Non esegue scommesse e non dimostra una redditività. L'avanzamento alla giornata successiva e la liquidazione dei pronostici non fanno parte di questa prima versione.

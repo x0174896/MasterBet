@@ -106,9 +106,11 @@ dev-local.bat
 
 Il batch funziona anche se chiamato da un'altra cartella. Usa Windows PowerShell senza modificare le policy globali, cerca un JDK 25 tramite `JAVA_HOME` o fra le installazioni in `%ProgramFiles%\Java`, e abilita lo store certificati Windows per il processo Java/Maven. Richiede Node.js disponibile nel PATH, dipendenze frontend già installate con `npm ci`, configurazione privata e PostgreSQL avviato. Non richiede privilegi amministrativi per l'avvio ordinario.
 
-Il launcher controlla prima entrambe le porte e i processi registrati, poi compila il backend con `mvnw package -DskipTests` (log `.local/build-backend.log`). La compilazione di avvio non sostituisce i test obbligatori prima della pubblicazione. Attende la risposta del backend e poi quella del proxy frontend, fino a 60 secondi per servizio. Se un servizio appena avviato fallisce, arresta soltanto i processi creati da quel tentativo. Una porta occupata produce un errore con il PID, senza terminare il programma che la usa e senza scegliere una porta alternativa.
+Il launcher controlla prima entrambe le porte e i processi registrati, poi compila il backend con `mvnw package -DskipTests` (log `.local/build-backend.log`). La compilazione di avvio non sostituisce i test obbligatori prima della pubblicazione. Apre due console visibili, con titoli `MasterBet - backend - porta 8080` e `MasterBet - frontend - porta 4200`, e attende la risposta dei servizi fino a 60 secondi per servizio. Una porta occupata produce un errore con il PID, senza terminare il programma che la usa e senza scegliere una porta alternativa.
 
-La finestra del batch resta aperta per leggere l'esito; `dev-local.bat --no-pause` restituisce il codice di uscita al termine dell'avvio senza attendere un tasto. Chiudere la finestra del batch non arresta i servizi. Per riavviare usare prima `scripts/stop-local.ps1`.
+I log scorrono nelle rispettive console. **Chiudere la console backend arresta solo Java e libera 8080; chiudere quella frontend arresta Node e i suoi processi figli, liberando 4200.** Ogni console appartiene a un Windows Job Object indipendente con `KILL_ON_JOB_CLOSE`, senza handle ereditabili: la chiusura elimina il relativo albero di processi anche se il gestore PowerShell non esegue un blocco `finally`. [Comportamento documentato da Microsoft](https://learn.microsoft.com/windows/win32/procthread/job-objects). Il piccolo helper C# viene compilato in memoria da PowerShell: non serve installare un SDK .NET.
+
+La finestra iniziale del batch si chiude automaticamente dopo un avvio riuscito; restano le due console dei servizi. In caso di errore il batch attende un tasto, salvo `--no-pause`. Le console gia aperte restano visibili per leggere gli errori: un servizio che termina scrive il codice di uscita e attende Invio. Per riprovare chiudere le console rimaste oppure eseguire `scripts/stop-local.ps1`. Non sono applicate chiusure automatiche dell'altro servizio quando una console viene chiusa.
 
 Avvio PowerShell alternativo, con percorso JDK esplicito se necessario:
 
@@ -116,7 +118,7 @@ Avvio PowerShell alternativo, con percorso JDK esplicito se necessario:
 .\scripts\start-local.ps1 -JavaHome $env:JAVA_HOME
 ```
 
-Su questo PC aggiungere `-UseWindowsTrustStore` se si usa direttamente lo script PowerShell (il batch lo passa già). Il comando avvia processi nascosti e registra PID, percorso e data di avvio in `.local`. Non esegue importazioni.
+Su questo PC aggiungere `-UseWindowsTrustStore` se si usa direttamente lo script PowerShell (il batch lo passa già). Il comando registra PID delle console, percorso e data di avvio in `.local`. La telemetria Angular è disabilitata soltanto nel processo frontend per evitare il prompt iniziale. Non esegue importazioni e non modifica impostazioni globali.
 
 - Interfaccia: http://127.0.0.1:4200
 - Salute HTTP: http://127.0.0.1:8080/api/health
@@ -131,7 +133,17 @@ Arresto dei soli processi avviati dal launcher:
 .\scripts\stop-local.ps1
 ```
 
-Prima dell'arresto vengono verificati eseguibile, comando e data di avvio, per evitare di terminare un PID riutilizzato. Log separati `.local/backend.out.log`, `.local/backend.err.log`, `.local/frontend.out.log`, `.local/frontend.err.log`. In caso di errore di avvio controllare questi file.
+Per un solo servizio: `scripts/stop-local.ps1 -Component backend` oppure `-Component frontend`. Prima dell'arresto vengono verificati eseguibile, comando e data di avvio, per evitare di terminare un PID riutilizzato. Funziona anche con i manifest della precedente versione senza console visibili.
+
+I log Spring Boot vengono anche salvati in `.local/backend.log`, oltre a essere visibili nella console. Il frontend mostra i log direttamente nella propria console; i vecchi file `backend.out.log`, `backend.err.log`, `frontend.out.log` e `frontend.err.log` non vengono piu aggiornati. Non condividere i log senza verificarne il contenuto.
+
+Test di regressione del ciclo di vita delle console:
+
+```powershell
+.\scripts\test-console-lifecycle.ps1
+```
+
+Usa due processi PowerShell isolati, ciascuno con figlio e nipote Node temporanei, in `.local/console-tests`. Verifica l'arresto dell'intero albero e l'indipendenza dei due gruppi anche con terminazione brusca del proprietario. Non avvia MasterBet, non apre porte e non accede a database o API. Eseguirlo insieme alle verifiche obbligatorie quando cambiano i launcher.
 
 ## Audit indipendente
 

@@ -63,41 +63,44 @@ try {
     $env:MAVEN_OPTS = $previousMavenOpts
 }
 
-function Wait-LocalService($process, [string]$url, [string]$label) {
+function Wait-LocalService($process, [string]$url, [string]$component, [string]$runId) {
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     do {
-        if ($process.HasExited) { throw "$label terminato durante l'avvio. Consultare i log in .local." }
+        if ($process.HasExited) { throw "Console $component chiusa durante l'avvio." }
+        $exitPath = Join-Path $localDir "$component-exit.json"
+        if (Test-Path -LiteralPath $exitPath) {
+            $exitState = Get-Content -Raw -LiteralPath $exitPath | ConvertFrom-Json
+            if ($exitState.runId -eq $runId) { throw "$component terminato durante l'avvio (codice $($exitState.exitCode)). Consultare la sua console." }
+        }
         try {
             $health = Invoke-RestMethod -Uri $url -TimeoutSec 2
             if ($health.status -eq 'UP') { return }
         } catch { }
         Start-Sleep -Milliseconds 300
     } while ([DateTime]::UtcNow -lt $deadline)
-    throw "$label non pronto entro 60 secondi. Consultare i log in .local."
+    throw "$component non pronto entro 60 secondi. Consultare la sua console."
 }
 
-$javaArguments = @()
-if ($UseWindowsTrustStore) { $javaArguments += @('-Djavax.net.ssl.trustStoreType=Windows-ROOT','-Djavax.net.ssl.trustStore=NONE') }
-$javaArguments += @('-jar',('"'+$jarPath+'"'),'--server.port=8080')
+$consoleScript = Join-Path $PSScriptRoot 'run-local-service.ps1'
+$powershellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$runId = [Guid]::NewGuid().ToString('N')
 $startedProcesses = @{}
 try {
-    $backendProcess = Start-Process -FilePath $javaPath -ArgumentList $javaArguments -WorkingDirectory (Join-Path $projectRoot 'backend') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $localDir 'backend.out.log') -RedirectStandardError (Join-Path $localDir 'backend.err.log')
-    $startedProcesses['backend'] = $backendProcess
-    @{ processId=$backendProcess.Id; executable=$javaPath; marker=$jarPath; startedAt=$backendProcess.StartTime.ToUniversalTime().ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $localDir 'backend-process.json') -Encoding utf8
-    Wait-LocalService $backendProcess 'http://127.0.0.1:8080/api/health' 'Backend'
-    $frontendProcess = Start-Process -FilePath $nodePath -ArgumentList @(('"'+$ngPath+'"'),'serve','--host','127.0.0.1','--port','4200','--proxy-config','proxy.conf.json') -WorkingDirectory (Join-Path $projectRoot 'frontend') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $localDir 'frontend.out.log') -RedirectStandardError (Join-Path $localDir 'frontend.err.log')
-    $startedProcesses['frontend'] = $frontendProcess
-    @{ processId=$frontendProcess.Id; executable=$nodePath; marker=$ngPath; startedAt=$frontendProcess.StartTime.ToUniversalTime().ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $localDir 'frontend-process.json') -Encoding utf8
-    Wait-LocalService $frontendProcess 'http://127.0.0.1:4200/api/health' 'Frontend e proxy API'
-} catch {
-    # Gli oggetti Process appartengono solo a questo avvio, mai a servizi preesistenti.
-    foreach ($component in $startedProcesses.Keys) {
-        $started = $startedProcesses[$component]
-        if (!$started.HasExited) { $started.Kill(); $started.WaitForExit() }
-        Remove-Item -LiteralPath (Join-Path $localDir "$component-process.json") -ErrorAction SilentlyContinue
+    foreach ($component in @('backend','frontend')) {
+        $executable = if ($component -eq 'backend') { $javaPath } else { $nodePath }
+        $consoleArguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$consoleScript+'"'),'-Component',$component,'-ExecutablePath',('"'+$executable+'"'),'-RunId',$runId)
+        if ($UseWindowsTrustStore) { $consoleArguments += '-UseWindowsTrustStore' }
+        $console = Start-Process -FilePath $powershellPath -ArgumentList $consoleArguments -WorkingDirectory $projectRoot -WindowStyle Normal -PassThru
+        $startedProcesses[$component] = $console
+        @{ processId=$console.Id; executable=$powershellPath; marker=$consoleScript; startedAt=$console.StartTime.ToUniversalTime().ToString('o'); component=$component } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $localDir "$component-process.json") -Encoding utf8
     }
+    Wait-LocalService $startedProcesses['backend'] 'http://127.0.0.1:8080/api/health' 'backend' $runId
+    Wait-LocalService $startedProcesses['frontend'] 'http://127.0.0.1:4200/api/health' 'frontend' $runId
+} catch {
+    # Le console restano disponibili per leggere l'errore e chiudere ciascun servizio.
+    Write-Output 'Avvio non completato. Controllare e chiudere le console MasterBet aperte; in alternativa usare scripts\stop-local.ps1.'
     throw
 }
-Write-Output "MasterBet avviato: backend PID $($backendProcess.Id), frontend PID $($frontendProcess.Id)."
+Write-Output 'MasterBet avviato in due console indipendenti, con log in tempo reale.'
 Write-Output 'Interfaccia: http://127.0.0.1:4200 - API: http://127.0.0.1:8080/api/health'
-Write-Output 'Log nella cartella .local. Arresto: .\scripts\stop-local.ps1'
+Write-Output 'Chiudi una console per arrestare il relativo servizio. Arresto di entrambi: .\scripts\stop-local.ps1'
