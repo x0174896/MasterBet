@@ -3,6 +3,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { BettingPanel } from './betting-panel';
 import { BettingView } from './betting.models';
+import { vi } from 'vitest';
 describe('Schedine e job unico', () => {
   let http: HttpTestingController;
   const evaluation = {
@@ -43,7 +44,10 @@ describe('Schedine e job unico', () => {
     });
     http = TestBed.inject(HttpTestingController);
   });
-  afterEach(() => http.verify());
+  afterEach(() => {
+    http.verify();
+    vi.useRealTimers();
+  });
   function setup() {
     const f = TestBed.createComponent(BettingPanel);
     f.detectChanges();
@@ -73,6 +77,8 @@ describe('Schedine e job unico', () => {
     r.flush({}, { status: 503, statusText: 'Unavailable' });
     expect(f.componentInstance.error()).toContain('Avvio non confermato');
     expect(f.componentInstance.busy()).toBe(false);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[role="progressbar"]')).toBeNull();
   });
   it('rifiuta utili obiettivo non validi senza contattare il backend', () => {
     const f = setup();
@@ -85,6 +91,8 @@ describe('Schedine e job unico', () => {
     const f = setup();
     f.componentInstance.save();
     f.componentInstance.save();
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[role="progressbar"]')).toBeNull();
     const request = http.expectOne('/api/betting/save');
     expect(request.request.body).toEqual({ expectedScenarioId: 'round7' });
     request.flush({ ...view, frozen: true });
@@ -174,5 +182,70 @@ describe('Schedine e job unico', () => {
     f.detectChanges();
     expect(f.nativeElement.textContent).toContain('Quota insufficiente');
     expect(f.componentInstance.view()).not.toBeNull();
+  });
+
+  it('mostra subito la barra centrale, segue le fasi e la chiude al completamento', () => {
+    vi.useFakeTimers();
+    const f = setup();
+    const emit = vi.spyOn(f.componentInstance.advanced, 'emit');
+    f.componentInstance.advance();
+    f.detectChanges();
+    const progress = f.nativeElement.querySelector('[role="progressbar"]') as HTMLElement;
+    expect(progress.closest('.advance-progress')).not.toBeNull();
+    expect(progress.hasAttribute('aria-valuenow')).toBe(false);
+    expect(f.nativeElement.textContent).toContain('Avvio del job');
+    http.expectOne('/api/advance-job').flush({ status: 'RUNNING', message: 'Download quote' });
+    vi.advanceTimersByTime(0);
+    http.expectOne('/api/advance-job').flush({ status: 'RUNNING', message: 'Addestramento' });
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('.advance-progress').textContent).toContain(
+      'Addestramento',
+    );
+    expect(f.componentInstance.busy()).toBe(true);
+    vi.advanceTimersByTime(1500);
+    http.expectOne('/api/advance-job').flush({ status: 'SUCCEEDED', message: 'Step completato' });
+    http.expectOne('/api/betting').flush(view);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[role="progressbar"]')).toBeNull();
+    expect(f.componentInstance.busy()).toBe(false);
+    expect(emit).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(3000);
+    http.expectNone('/api/advance-job');
+    f.destroy();
+  });
+
+  it('ripristina la barra aprendo la pagina durante un job già in corso e gestisce il fallimento', () => {
+    vi.useFakeTimers();
+    const f = TestBed.createComponent(BettingPanel);
+    const emit = vi.spyOn(f.componentInstance.advanced, 'emit');
+    f.detectChanges();
+    http.expectOne('/api/betting').flush(view);
+    http.expectOne('/api/advance-job').flush({ status: 'RUNNING', message: 'Controlli dati' });
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[role="progressbar"]')).not.toBeNull();
+    expect(f.componentInstance.busy()).toBe(true);
+    vi.advanceTimersByTime(0);
+    http.expectOne('/api/advance-job').flush({ status: 'FAILED', message: 'Quota insufficiente' });
+    http.expectOne('/api/betting').flush(view);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[role="progressbar"]')).toBeNull();
+    expect(f.nativeElement.textContent).toContain('Quota insufficiente');
+    expect(f.componentInstance.busy()).toBe(false);
+    expect(emit).not.toHaveBeenCalled();
+    f.destroy();
+  });
+
+  it('chiude la barra e segnala la perdita della connessione durante il polling', () => {
+    vi.useFakeTimers();
+    const f = setup();
+    f.componentInstance.advance();
+    http.expectOne('/api/advance-job').flush({ status: 'RUNNING', message: 'Download quote' });
+    vi.advanceTimersByTime(0);
+    http.expectOne('/api/advance-job').flush({}, { status: 503, statusText: 'Unavailable' });
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[role="progressbar"]')).toBeNull();
+    expect(f.componentInstance.error()).toContain('Connessione interrotta');
+    expect(f.componentInstance.busy()).toBe(false);
+    f.destroy();
   });
 });

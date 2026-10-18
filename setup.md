@@ -63,6 +63,17 @@ npm run build
 npm test -- --watch=false
 ```
 
+Se Vitest segnala `ENOENT` su file temporanei nella sandbox Windows, usare una cartella temporanea del progetto nella sola sessione corrente. Dalla cartella `frontend`:
+
+```powershell
+New-Item -ItemType Directory -Path ../.local/tmp -Force | Out-Null
+$env:TEMP=(Resolve-Path ../.local/tmp).Path
+$env:TMP=$env:TEMP
+npm test -- --watch=false
+```
+
+La cartella resta ignorata da Git; nessuna impostazione globale viene modificata. I test backend con Mockito richiedono un ambiente che consenta l'aggancio locale dell'agent alla JVM; una sandbox che lo blocca non costituisce un esito dei test.
+
 Budget iniziale frontend: avviso 550 kB, limite 650 kB, senza Bootstrap JavaScript. Il bundle di produzione include la localizzazione italiana; la pagina di analisi è caricata separatamente.
 
 In questa workstation i certificati di rete sono nello store Windows. Quando necessario, nella sola sessione corrente:
@@ -172,6 +183,10 @@ Contratto di avvio: `POST /api/advance-job`, risposta 202 con stato del job. Cor
 ```
 
 Questo esempio avanza **oltre** lo step 8: non eseguirlo per una semplice verifica di salute. Polling `GET /api/advance-job` ogni 1,5 secondi; un ID scenario non corrente restituisce 409. Lo stato è persistente; i job con proprietario terminato sono marcati falliti alla lettura e possono essere ripetuti. La cache e le schedine già congelate sono conservate in caso di errore, mentre la pubblicazione del nuovo snapshot e delle nuove schedine è transazionale. Non correggere manualmente lo stato di un job con processo ancora attivo.
+
+Durante l'avvio della richiesta e lo stato `RUNNING`, l'interfaccia mostra una barra animata al centro dello schermo, con la fase comunicata dal job. È indeterminata perché il contratto non fornisce una percentuale. Si riattiva anche aprendo la pagina mentre il job è in corso; scompare alla fine o se la connessione si interrompe, lasciando visibile il messaggio di stato/errore. I test HTTP isolati verificano questi casi senza far avanzare lo scenario reale né consumare chiamate API.
+
+La tabella «Bilancio virtuale» mostra solo schedine vinte/perse già concluse al taglio, escludendo puntate in attesa e proposte future. La select «Filtra schedine per step» e «Azzera filtro» operano localmente sui dati già ricevuti da `GET /api/betting`, per il modello selezionato. Il piè di tabella mostra puntato, ritorno e netto dei soli record visualizzati: senza filtro somma tutte le righe mostrate, con filtro solo quelle dello step scelto. La somma usa centesimi interi; netto = ritorno − puntato, anche negativo. In assenza di righe visibili i tre totali sono zero. Se lo step selezionato non è più disponibile dopo l'aggiornamento dei dati o il cambio modello, il filtro torna a «Tutti gli step». Il riepilogo capitale/ROI precedente alla tabella resta globale. Proposte correnti e consultazione degli esiti rimangono nelle rispettive sezioni; nessun contratto API o dato persistito è modificato.
 
 Il pianificatore usa finestre di 7 giorni e salta settimane senza eventi. Prima dei download OddsPapi verifica il costo delle richieste calendario non in cache. Le nuove quote storiche sono scaricate prima dei nuovi risultati; questi ultimi provengono da NFF. I calendari di contesto sono richiesti in intervalli inferiori a 10 giorni, filtrati per le squadre pertinenti. Lo step 7 → 8 ha richiesto due chiamate fatturate (calendario stagione e contesto), sei richieste quote storiche non conteggiate e referti NFF gratuiti. Gli step futuri dipendono dalla copertura e dalla quota residua.
 

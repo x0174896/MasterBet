@@ -1,4 +1,20 @@
-<section class="panel p-4 mb-4">
+@if (advancing()) {
+  <div class="advance-progress" role="status" aria-live="polite" aria-atomic="true">
+    <div class="advance-progress-card shadow-lg">
+      <h2 class="h5">Avanzamento allo step successivo</h2>
+      <p>{{ job()?.message ?? 'Avvio del job…' }}</p>
+      <div
+        class="progress"
+        role="progressbar"
+        aria-label="Avanzamento allo step successivo in corso"
+        aria-valuetext="In corso"
+      >
+        <div class="progress-bar progress-bar-striped progress-bar-animated w-100"></div>
+      </div>
+    </div>
+  </div>
+}
+<section class="panel p-4 mb-4" [attr.aria-busy]="advancing()">
   <h2>Schedine e avanzamento</h2>
   <p>
     Ogni schedina punta a un utile netto di una unità in caso di vincita. Le probabilità e il valore
@@ -182,47 +198,6 @@
       }}
       ({{ evaluation.resolvedLegs }} esiti). Non è una validazione di tutti i mercati.
     </p>
-    <div class="table-responsive">
-      <table class="table">
-        <caption>
-          Storico delle selezioni salvate. Importi calcolati con l'utile netto obiettivo; esiti non
-          disponibili restano in attesa, senza inventare rimborsi.
-        </caption>
-        <thead>
-          <tr>
-            <th>Step / schedina</th>
-            <th>Stato</th>
-            <th>Puntata</th>
-            <th>Ritorno</th>
-            <th>Netto</th>
-            <th>Risultati esatti</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (row of evaluation.slips; track row.scenarioId + row.slipId) {
-            <tr>
-              <td>{{ stepLabel(row.scenarioId) }} / {{ row.slipId }}</td>
-              <td>
-                {{
-                  row.status === 'PENDING' ? 'In attesa' : row.status === 'WON' ? 'Vinta' : 'Persa'
-                }}
-              </td>
-              <td>{{ row.stake | currency: 'EUR' }}</td>
-              <td>{{ row.payout === null ? '—' : (row.payout | currency: 'EUR') }}</td>
-              <td>{{ row.profit === null ? '—' : (row.profit | currency: 'EUR') }}</td>
-              <td>
-                @if (v.frozen) {
-                  <app-slip-result
-                    [scenario]="row.scenarioId"
-                    [variant]="model()"
-                    [slip]="row.slipId"
-                  />
-                }
-              </td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </div>
+    <app-betting-history [slips]="evaluation.slips" [variant]="model()" [showResults]="v.frozen" />
   }
 </section>

@@ -1,6 +1,6 @@
 # Inventario funzionale MasterBet
 
-Ultimo aggiornamento: 18 ottobre 2026 — unità come utile netto obiettivo e ricalcolo monetario degli step 7–8, senza avanzamento.
+Ultimo aggiornamento: 18 ottobre 2026 — filtro per step e totali dei record visualizzati nel bilancio; barra centrale per il job di avanzamento.
 
 ## Funzionalità implementate
 
@@ -42,6 +42,9 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 - **Occhio** su ogni schedina corrente e nello storico: scarica/verifica il referto NFF, mostra risultato esatto HT/SH/FT, esito di ogni selezione e della schedina, puntata, ritorno lordo e profitto/perdita. Esito persistito e riutilizzato; dati mancanti non diventano pareggi o perdite.
 - L'occhio salva gli esiti in un archivio separato: non modifica snapshot, addestramento, statistiche o bilancio al taglio. La liquidazione simulata avviene con l'avanzamento, quando i risultati entrano nel passato consentito.
 - Bilanci distinti campionato/coppe: profitto, ROI, capitale, disponibilità, drawdown misurato a fine step, profitti singole/doppie e Brier binario delle selezioni risolte. Importi decimali; ritorno lordo arrotondato al centesimo prima di sottrarre la puntata.
+- Tabella del bilancio filtrabile per step, con opzione «Tutti gli step» e azzeramento del filtro. Mostra soltanto schedine concluse (vinte/perse) al taglio: le puntate in attesa, incluse le proposte degli step successivi, sono escluse dalla tabella, dai filtri disponibili e dai totali. Le proposte correnti restano nella sezione dedicata.
+- In fondo alla tabella, totale puntato, totale ritorno e netto (ritorno meno puntato), calcolati esclusivamente sui record visualizzati del modello selezionato, anche senza filtro. Somma in centesimi interi; perdite evidenziate con segno negativo. Storico o filtro vuoto: tre totali a zero. Il riepilogo capitale/ROI sopra la tabella resta riferito all'intera simulazione.
+- Barra di caricamento centrale durante l'avvio e l'esecuzione del job, con messaggio della fase corrente e indicazione accessibile senza percentuali inventate. Ripresa all'apertura della pagina con job già attivo; chiusura su completamento, fallimento o errore di connessione, con messaggi di errore conservati. Il semplice salvataggio delle proposte non attiva la barra del job.
 
 ### Interfaccia, API e ambiente
 
@@ -54,11 +57,12 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 ## Verifiche eseguite
 
 - 78 test JUnit 5, inclusi persistenza/API su H2 isolato, selezione, capitale, liquidazione per periodo, arrotondamenti, ricalcolo delle due varianti, archivio originale, rollback, idempotenza, isolamento dei risultati e download dell'occhio concorrente al ricalcolo.
-- 23 test Angular/Vitest e build di produzione, inclusi unità come utile netto, assenza del limite, invio dei parametri aggiornati, ordinamento EV, job, salvataggio, linee/periodi e apertura esiti/errori/cambio modello.
+- 33 test Angular/Vitest e build di produzione, inclusi unità come utile netto, assenza del limite, invio dei parametri aggiornati, ordinamento EV, job, salvataggio, linee/periodi e apertura esiti/errori/cambio modello. Coperti anche filtro/reset per step, somme sui soli record visibili, ritorni nulli esclusi e ritorni zero delle perdite conservati, centesimi, netto negativo, storico vuoto, cambio dei dati del modello (reset se lo step selezionato non è più disponibile) e ciclo di vita della barra centrale.
 - Avanzamento reale 7 → 8, ripresa da cache dopo un errore su un evento estraneo, addestramento e pubblicazione PostgreSQL.
 - Audit indipendente di 171 risposte OddsPapi, 139 punteggi usati, tutte le 1.787 quote e statistiche/API delle 16 squadre. Riscontro NFF dei 47 risultati originari e dei 10 nuovi referti.
 - Audit indipendente delle 22 selezioni dei due step e delle due varianti: probabilità ricalcolate da pesi/caratteristiche, prezzi, puntate a utile netto obiettivo, ritorni, capitali di apertura, ROI e drawdown. Verificati tutti i sette esiti consultati contro NFF e gli originali archiviati. Snapshot completi, modelli e stato del job confrontati con il backup: invariati.
 - Browser reale: cinque proposte con importi aggiornati, campo utile obiettivo, rimozione del limite, consultazione del netto ricalcolato e del risultato già salvato. Ordinamento EV già verificato nello sviluppo precedente, invariato.
+- Browser reale per il nuovo bilancio: nove record conclusi degli step 7–8, totale puntato 36,80 €, ritorno 49,20 €, netto 12,40 €. Filtro step 8: cinque record, 20,09 € / 27,20 € / 7,11 €. Verifica di sola lettura sui dati locali presenti; nessun job reale avviato da questo sviluppo. Stati del job simulati esclusivamente nei test automatici; API, persistenza e assenza di modalità mock applicativa invariati.
 - Contatore OddsPapi verificato il 18 ottobre: **241/250**, 9 richieste residue. Questo avanzamento ha usato 2 richieste fatturate. Consultazione delle schedine salvate ed esiti NFF non consumano richieste OddsPapi.
 - Test delle due console e della loro terminazione indipendente già verificati nello sviluppo del launcher, invariato in questa modifica.
 
@@ -74,6 +78,7 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 
 ## Registro delle modifiche
 
+- 18 ottobre 2026: filtro per step nel bilancio, esclusione delle schedine in attesa e totali puntato/ritorno/netto dei soli record visualizzati; barra centrale durante il job con messaggio della fase. Nessuna modifica ai contratti API o ai dati salvati; nessun avanzamento reale eseguito per verificare la barra.
 - 18 ottobre 2026: unità come utile netto obiettivo per schedina, rimosso limite per step, ricalcolo autorizzato di storico/proposte/esiti con archivio originale, nessun avanzamento oltre lo step 8. Capitale al taglio 505,29 €, disponibile 485,20 €, impegnato 20,09 € per entrambe le varianti.
 - 18 ottobre 2026: job unico di avanzamento, riaddestramento, bilanci, EV ordinabile, cinque schedine persistite ed occhio con referti verificati e archivio separato. Avanzato e verificato lo step 8; originali conservati.
 - 18 ottobre 2026: due console indipendenti, log visibili, chiusura degli alberi di processi, arresto selettivo e test isolato del ciclo di vita.

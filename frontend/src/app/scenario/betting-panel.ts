@@ -6,10 +6,20 @@ import { exhaustMap, Subscription, timer } from 'rxjs';
 import { ScenarioApi } from './scenario-api';
 import { AdvanceJob, BettingView } from './betting.models';
 import { SlipResult } from './slip-result';
+import { BettingHistory } from './betting-history';
 @Component({
   selector: 'app-betting-panel',
-  imports: [CurrencyPipe, DatePipe, DecimalPipe, PercentPipe, FormsModule, SlipResult],
+  imports: [
+    CurrencyPipe,
+    DatePipe,
+    DecimalPipe,
+    PercentPipe,
+    FormsModule,
+    SlipResult,
+    BettingHistory,
+  ],
   templateUrl: './betting-panel.html',
+  styleUrl: './betting-panel.scss',
 })
 export class BettingPanel implements OnInit {
   stepLabel(id: string) {
@@ -34,6 +44,7 @@ export class BettingPanel implements OnInit {
   readonly job = signal<AdvanceJob | null>(null);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly advancing = signal(false);
   readonly model = signal<'cups' | 'league'>('cups');
   unitValue = 5;
   initialBankrollUnits = 100;
@@ -65,6 +76,7 @@ export class BettingPanel implements OnInit {
           this.job.set(job);
           if (job.status === 'RUNNING') {
             this.busy.set(true);
+            this.advancing.set(true);
             this.poll();
           }
         },
@@ -103,6 +115,8 @@ export class BettingPanel implements OnInit {
     }
     this.error.set('');
     this.busy.set(true);
+    this.advancing.set(true);
+    this.job.set(null);
     this.api
       .advance(view.current.scenarioId, {
         unitValue: this.unitValue,
@@ -116,6 +130,7 @@ export class BettingPanel implements OnInit {
         },
         error: () => {
           this.busy.set(false);
+          this.advancing.set(false);
           this.error.set(
             'Avvio non confermato. Ricarica lo stato prima di riprovare: il job potrebbe essere già partito.',
           );
@@ -135,12 +150,14 @@ export class BettingPanel implements OnInit {
           if (job.status !== 'RUNNING') {
             this.polling?.unsubscribe();
             this.busy.set(false);
+            this.advancing.set(false);
             this.load();
             if (job.status === 'SUCCEEDED') this.advanced.emit();
           }
         },
         error: () => {
           this.busy.set(false);
+          this.advancing.set(false);
           this.error.set(
             'Connessione interrotta. Ricarica la pagina per recuperare lo stato del job.',
           );
