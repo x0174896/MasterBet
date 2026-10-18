@@ -42,7 +42,7 @@ Su questa workstation database e ruolo sono già stati creati e verificati. Non 
 
 Per una nuova installazione, un amministratore crea database e ruolo dedicati. `scripts/bootstrap-postgres.ps1` conserva la procedura speciale usata, con accesso amministrativo temporaneo su localhost, ripristino immediato dell'autenticazione originale, backup locale e controlli contro risorse preesistenti. Richiede autorizzazione esplicita e il parametro `-ApproveTemporaryLocalAdminAccess`; non è una procedura ordinaria di avvio né un reset password. Non riavvia il servizio.
 
-Flyway applica `backend/src/main/resources/db/migration/`. Schema `public`, tabelle per partite, risultati, modelli e snapshot; vincoli sui gol HT/FT. V2 aggiunge schedine immutabili e stato del job; V3 una revisione separata della proposta, blocco dopo consultazione ed esiti indipendenti. Non modificare migrazioni già applicate. Gli istanti sono stringhe ISO-8601 UTC e i payload JSON conservano il dettaglio normalizzato. I test usano esclusivamente H2 in memoria e non le credenziali locali. Nessuna estensione PostgreSQL richiesta.
+Flyway applica `backend/src/main/resources/db/migration/`. Schema `public`, tabelle per partite, risultati, modelli e snapshot; vincoli sui gol HT/FT. V2 aggiunge schedine immutabili e stato del job; V3 una revisione separata della proposta, blocco dopo consultazione ed esiti indipendenti; V4 gli archivi `betting_round_revision` e `betting_reveal_revision` per gli importi precedenti al ricalcolo monetario. Non modificare migrazioni già applicate. Gli istanti sono stringhe ISO-8601 UTC e i payload JSON conservano il dettaglio normalizzato. I test usano esclusivamente H2 in memoria e non le credenziali locali. Nessuna estensione PostgreSQL richiesta.
 
 ## Installazione, build e test
 
@@ -157,28 +157,42 @@ python -B scripts/audit-data.py
 python -B scripts/audit-betting.py
 ```
 
-L'export è consentito soltanto per il database locale documentato e comprende snapshot storici, proposte attive e consultazioni degli esiti. L'audit dati verifica hash, punteggi, periodi, prezzi/timestamp, esclusione del futuro dai dati del modello, esiti mancanti/sospesi, statistiche e API. I nuovi risultati sono confrontati con i referti in `.local/data/nff`. Se è presente `.local/audit/nff-results.json`, verifica anche i 47 referti della validazione iniziale; altrimenti dichiara quel riscontro `NOT_RUN`. L'audit schedine ricalcola probabilità dai pesi e dalle caratteristiche, importi e bilanci delle due varianti e verifica gli esiti consultati contro NFF. Rapporti in `.local/audit/report.json` e `betting-report.json`.
+L'export è consentito soltanto per il database locale documentato e comprende snapshot storici, proposte attive, consultazioni degli esiti e archivi delle revisioni monetarie (schema V4 necessario). L'audit dati verifica hash, punteggi, periodi, prezzi/timestamp, esclusione del futuro dai dati del modello, esiti mancanti/sospesi, statistiche e API. I nuovi risultati sono confrontati con i referti in `.local/data/nff`. Se è presente `.local/audit/nff-results.json`, verifica anche i 47 referti della validazione iniziale; altrimenti dichiara quel riscontro `NOT_RUN`. L'audit schedine verifica la politica `net-profit-unit-v3`: probabilità dai pesi, importi, capitali di apertura, bilanci, ROI e drawdown delle due varianti; confronta inoltre gli esiti con NFF e le selezioni con gli originali archiviati. Rapporti in `.local/audit/report.json` e `betting-report.json`.
 
 Le verifiche obbligatorie prima della pubblicazione sono `mvnw test`, `npm run build`, `npm test -- --watch=false`, più gli audit reali quando cambiano acquisizione o calcoli. Nessuna modalità mock applicativa è presente: gli stub sono limitati ai test e i contratti GET/POST reali sono condivisi con i modelli TypeScript.
 
 ## Avanzamento e schedine salvate
 
-Aprire «Schedine e avanzamento», scegliere il valore dell'unità e il limite per il prossimo step (massimo 2 unità), poi premere «Avanza uno step e calcola le schedine». Il capitale iniziale non si modifica dopo il primo salvataggio. Le impostazioni non riscrivono le schedine correnti.
+Aprire «Schedine e avanzamento», scegliere l'utile netto obiettivo per ogni schedina (valore dell'unità) per il prossimo step, poi premere «Avanza uno step e calcola le schedine». Non c'è un limite di spesa per step; resta il capitale disponibile. Il capitale iniziale non si modifica dopo il primo salvataggio. Le impostazioni non riscrivono le schedine correnti.
 
 Contratto di avvio: `POST /api/advance-job`, risposta 202 con stato del job. Corpo JSON:
 
 ```json
-{"expectedScenarioId":"eliteserien-2026-round8","config":{"unitValue":5,"initialBankrollUnits":100,"maxRoundUnits":2}}
+{"expectedScenarioId":"eliteserien-2026-round8","config":{"unitValue":5,"initialBankrollUnits":100}}
 ```
 
 Questo esempio avanza **oltre** lo step 8: non eseguirlo per una semplice verifica di salute. Polling `GET /api/advance-job` ogni 1,5 secondi; un ID scenario non corrente restituisce 409. Lo stato è persistente; i job con proprietario terminato sono marcati falliti alla lettura e possono essere ripetuti. La cache e le schedine già congelate sono conservate in caso di errore, mentre la pubblicazione del nuovo snapshot e delle nuove schedine è transazionale. Non correggere manualmente lo stato di un job con processo ancora attivo.
 
 Il pianificatore usa finestre di 7 giorni e salta settimane senza eventi. Prima dei download OddsPapi verifica il costo delle richieste calendario non in cache. Le nuove quote storiche sono scaricate prima dei nuovi risultati; questi ultimi provengono da NFF. I calendari di contesto sono richiesti in intervalli inferiori a 10 giorni, filtrati per le squadre pertinenti. Lo step 7 → 8 ha richiesto due chiamate fatturate (calendario stagione e contesto), sei richieste quote storiche non conteggiate e referti NFF gratuiti. Gli step futuri dipendono dalla copertura e dalla quota residua.
 
-Il job salva automaticamente fino a cinque schedine per modello. Quattro singole da 0,4 u e una doppia da 0,25 u richiedono sei partite idonee; con cinque partite vengono proposte cinque singole. Non vengono aumentati rischio o esposizione per raggiungere un numero prefissato. Puntate arrotondate per difetto ai centesimi; ritorno lordo con arrotondamento HALF_UP e netto ottenuto sottraendo la puntata.
+Il job salva automaticamente fino a cinque schedine per modello. Quattro singole e una doppia richiedono sei partite idonee; con cinque partite vengono proposte cinque singole. Per ciascuna `stake = unitValue / (price - 1)`, usando il prodotto delle quote per la doppia. Puntata arrotondata HALF_UP al centesimo con minimo 0,01 €; ritorno lordo HALF_UP e netto ottenuto sottraendo la puntata. L'utile effettivo può differire dall'obiettivo per i centesimi. `units=1` rappresenta un'unità di utile obiettivo, non di puntata. Una proposta che non rientra nel capitale disponibile viene omessa senza ridimensionarla o reintegrare il capitale. `maxRoundUnits` non è più emesso né usato; viene ignorato durante la lettura degli archivi e delle richieste legacy.
 
-`POST /api/betting/save` con `{"expectedScenarioId":"..."}` salva la prima anteprima o applica la politica a cinque a una proposta legacy del solo scenario corrente. Conserva la proposta originale e rifiuta la revisione dopo la consultazione di esiti. È idempotente; non permette di riscrivere schedine già liquidate né di scegliere retroattivamente quelle vincenti.
+`POST /api/betting/save` con `{"expectedScenarioId":"..."}` salva la prima anteprima. È idempotente; una proposta già presente viene restituita senza riscriverla, anche se legacy. La revisione monetaria esplicita descritta sotto è separata e conserva le stesse selezioni.
 
 L'occhio invia `POST /api/betting/{scenarioId}/{variant}/{slipId}/reveal`, dove `variant` è `cups` o `league`. Prima del download blocca le scelte e verifica l'identità NFF della partita. Conserva risultato, fonte, esito e importi nella sola tabella `betting_reveal`; né training né liquidazione al taglio leggono questa tabella. Il referto viene richiesto solo dopo kickoff +24 ore rispetto al presente reale. Un risultato mancante produce attesa o errore esplicito, mai un punteggio sostitutivo. La liquidazione simulata avviene al successivo avanzamento che ammette il risultato nel passato.
 
 I referti HTML originali sono archiviati in `.local/data/nff`, con hash e data di acquisizione. La cache può contenere risultati successivi al taglio aperti con l'occhio: questo è previsto, ma devono restare esclusi dallo snapshot del modello. La consultazione salvata viene recuperata riaprendo l'occhio dopo un riavvio. La versione corrente del parser è specifica per NFF Eliteserien 2026; se HTML, calendario o identità non coincidono, interrompe l'operazione.
+
+## Ricalcolo monetario delle schedine esistenti
+
+Applicato il 18 ottobre 2026 agli step 7 e 8 con autorizzazione esplicita. Non è un'operazione ordinaria di avvio: il server applica solo la migrazione strutturale V4; il ricalcolo dei dati richiede il flag dedicato. Prima dell'operazione arrestare MasterBet, verificare la destinazione locale e creare un backup PostgreSQL. Da `backend`, dopo build e test:
+
+```powershell
+java -jar target/masterbet-backend-0.1.0.jar --reprice-bets --server.port=0 --masterbet.odds-api-key=
+```
+
+Il comando non va combinato con `--import-scenario`. Ricalcola tutte le giornate legacy con il valore dell'unità salvato in ciascuna, in ordine cronologico, per entrambe le varianti. Aggiorna solo puntate, proiezioni monetarie, capitali di apertura e importi degli esiti; conserva numero delle schedine, selezioni, quote, probabilità, modello, hash, taglio e date di salvataggio/consultazione. Il salvataggio dei referti riallinea gli importi alla proposta attiva anche quando un download era iniziato prima del ricalcolo.
+
+La transazione archivia i payload originali attivi nelle due tabelle V4 e mantiene immutabile `betting_round`; aggiorna `betting_proposal` e `betting_reveal`. Job in corso, snapshot incompatibile o capitale insufficiente fanno fallire l'intera operazione. Rifiuta anche uno storico che mescola la politica nuova con quella legacy, per non lasciare capitali di apertura incoerenti: applicare la revisione prima di creare nuovi step con il codice aggiornato. Ripetere il comando su uno storico già migrato è idempotente (`MASTERBET_REPRICE_OK rounds=0`). Non scarica dati, non addestra modelli, non avanza lo step e non legge gli esiti dell'occhio per calcolare il capitale al taglio.
+
+Verifica locale: `MASTERBET_REPRICE_OK rounds=2`; originali di due giornate e sette esiti archiviati. Backup e confronto prima/dopo in `.local/audit/before-profit-unit`, escluso da Git. Dopo il riavvio eseguire export e i due audit. Snapshot completi e stato del job sono rimasti invariati allo step 8. Il confronto retrospettivo degli importi non è una nuova validazione predittiva.

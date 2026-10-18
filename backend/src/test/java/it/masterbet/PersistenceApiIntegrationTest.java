@@ -40,6 +40,8 @@ class PersistenceApiIntegrationTest {
 
   @AfterEach
   void clean() {
+    jdbc.update("DELETE FROM betting_reveal_revision");
+    jdbc.update("DELETE FROM betting_round_revision");
     jdbc.update("DELETE FROM betting_reveal");
     jdbc.update("DELETE FROM betting_reveal_lock");
     jdbc.update("DELETE FROM betting_proposal");
@@ -169,7 +171,7 @@ class PersistenceApiIntegrationTest {
                     .header("Content-Type", "application/json")
                     .POST(
                         HttpRequest.BodyPublishers.ofString(
-                            "{\"expectedScenarioId\":\"stale\",\"config\":{\"unitValue\":5,\"initialBankrollUnits\":100,\"maxRoundUnits\":2}}"))
+                            "{\"expectedScenarioId\":\"stale\",\"config\":{\"unitValue\":5,\"initialBankrollUnits\":100}}"))
                     .build(),
                 HttpResponse.BodyHandlers.ofString());
     assertEquals(409, response.statusCode());
@@ -182,7 +184,7 @@ class PersistenceApiIntegrationTest {
   }
 
   @Test
-  void currentProposalUpgradePreservesOriginalAndCannotRewriteRevealedChoices() {
+  void ordinarySaveCannotRewriteLegacyChoicesEvenBeforeReveal() {
     var source = snapshot("test-model");
     context.getBean(SnapshotPublisher.class).publish(source);
     var bets = context.getBean(it.masterbet.betting.application.BettingService.class);
@@ -205,15 +207,13 @@ class PersistenceApiIntegrationTest {
     repo.save(legacy);
     var original = jdbc.queryForObject("SELECT payload FROM betting_round", String.class);
     assertTrue(workspace.save(source.id()).frozen());
-    assertEquals("five-slips-v2", repo.find(source.id()).orElseThrow().policyVersion());
+    assertNull(repo.find(source.id()).orElseThrow().policyVersion());
     workspace.save(source.id());
-    assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM betting_proposal", Integer.class));
+    assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM betting_proposal", Integer.class));
     assertEquals(original, jdbc.queryForObject("SELECT payload FROM betting_round", String.class));
     jdbc.update("DELETE FROM betting_proposal");
     repo.lockReveal(source.id());
-    assertThrows(
-        org.springframework.web.server.ResponseStatusException.class,
-        () -> workspace.save(source.id()));
+    assertTrue(workspace.save(source.id()).frozen());
     assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM betting_proposal", Integer.class));
   }
 
@@ -233,6 +233,10 @@ class PersistenceApiIntegrationTest {
                       .build(),
                   HttpResponse.BodyHandlers.ofString());
       assertEquals(id.equals("stale") ? 409 : 200, response.statusCode());
+      if (response.statusCode() == 200) {
+        assertFalse(response.body().contains("maxRoundUnits"));
+        assertTrue(response.body().contains("net-profit-unit-v3"));
+      }
     }
     assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM betting_round", Integer.class));
   }
@@ -267,9 +271,36 @@ class PersistenceApiIntegrationTest {
   void consultedResultsPersistWithoutEnteringTheSnapshotOrMatchResults() {
     var source = snapshot("test-model");
     context.getBean(SnapshotPublisher.class).publish(source);
+    var original =
+        context
+            .getBean(it.masterbet.betting.application.BettingService.class)
+            .prepare(source, it.masterbet.betting.domain.BettingConfig.defaults());
+    var savedSlip =
+        new it.masterbet.betting.domain.BettingRound.Slip(
+            "S1",
+            "SINGLE",
+            "unibet",
+            List.of(),
+            java.math.BigDecimal.ONE,
+            new java.math.BigDecimal("2.00"),
+            new java.math.BigDecimal("2"),
+            .6,
+            .2,
+            "test");
     context
-        .getBean(it.masterbet.betting.application.BettingService.class)
-        .freeze(source, it.masterbet.betting.domain.BettingConfig.defaults());
+        .getBean(it.masterbet.betting.infrastructure.BettingRepository.class)
+        .save(
+            new it.masterbet.betting.domain.BettingRound(
+                original.scenarioId(),
+                original.datasetSha256(),
+                original.modelId(),
+                original.cutoff(),
+                original.frozenAt(),
+                original.config(),
+                original.openingBankroll(),
+                original.leagueOpeningBankroll(),
+                List.of(savedSlip),
+                List.of()));
     var before = jdbc.queryForObject("SELECT payload FROM simulation_snapshot", String.class);
     var repo = context.getBean(it.masterbet.betting.infrastructure.RevealRepository.class);
     var reveal =

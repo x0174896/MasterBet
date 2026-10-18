@@ -1,8 +1,8 @@
 <section class="panel p-4 mb-4">
   <h2>Schedine e avanzamento</h2>
   <p>
-    Simulazione storica a puntate fisse. Le probabilità e il valore atteso sono stime: nessuna
-    vincita garantita.
+    Ogni schedina punta a un utile netto di una unità in caso di vincita. Le probabilità e il valore
+    atteso sono stime: nessuna vincita garantita.
   </p>
   @if (error()) {
     <div class="alert alert-warning" role="alert">
@@ -11,8 +11,9 @@
   }
   @if (view(); as v) {
     <div class="row g-3 mb-3">
-      <div class="col-md-4">
-        <label class="form-label" for="unit">Valore unità (€), prossimo step</label
+      <div class="col-md-6">
+        <label class="form-label" for="unit"
+          >1 unità = utile netto obiettivo (€), prossimo step</label
         ><input
           id="unit"
           class="form-control"
@@ -24,7 +25,7 @@
           [disabled]="busy()"
         />
       </div>
-      <div class="col-md-4">
+      <div class="col-md-6">
         <label class="form-label" for="capital">Capitale iniziale (unità)</label
         ><input
           id="capital"
@@ -34,19 +35,6 @@
           max="100000"
           [(ngModel)]="initialBankrollUnits"
           [disabled]="busy() || v.frozen"
-        />
-      </div>
-      <div class="col-md-4">
-        <label class="form-label" for="cap">Limite per step (unità)</label
-        ><input
-          id="cap"
-          class="form-control"
-          type="number"
-          min="0.25"
-          max="2"
-          step="0.25"
-          [(ngModel)]="maxRoundUnits"
-          [disabled]="busy()"
         />
       </div>
     </div>
@@ -94,14 +82,15 @@
       }}
       · {{ stepLabel(v.current.scenarioId) }} · Taglio
       {{ v.current.cutoff | date: 'dd/MM/yyyy HH:mm' : 'UTC' }} UTC · 1 unità =
-      {{ v.current.config.unitValue | currency: 'EUR' }}
+      {{ v.current.config.unitValue | currency: 'EUR' }} di utile netto obiettivo per schedina
     </p>
     <p class="small">
-      Obiettivo: cinque schedine, entro due unità. Quattro singole da 0,4 u e una doppia da 0,25 u;
-      con cinque sole partite idonee, cinque singole da 0,4 u. Se quote o capitale non bastano, le
-      proposte saranno meno di cinque.
+      Puntata = valore unità / (quota − 1), arrotondata al centesimo, minimo 0,01 €. L'utile
+      effettivo può differire di pochi centesimi dall'obiettivo. Obiettivo: cinque schedine, quattro
+      singole e una doppia; con cinque sole partite idonee, cinque singole. Nessun limite per step:
+      se quote o capitale disponibile non bastano, le proposte saranno meno di cinque.
     </p>
-    @if (!v.frozen || v.current.policyVersion !== 'five-slips-v2') {
+    @if (!v.frozen) {
       <button class="btn btn-outline-primary mb-3" (click)="save()" [disabled]="busy()">
         Salva le proposte della giornata
       </button>
@@ -137,7 +126,9 @@
             }
             <dl class="row mb-1">
               <dt class="col-7">Puntata virtuale</dt>
-              <dd class="col-5">{{ slip.units }} u · {{ slip.stake | currency: 'EUR' }}</dd>
+              <dd class="col-5">{{ slip.stake | currency: 'EUR' }}</dd>
+              <dt class="col-7">Utile netto obiettivo (1 u)</dt>
+              <dd class="col-5">{{ v.current.config.unitValue | currency: 'EUR' }}</dd>
               <dt class="col-7">Quota {{ slip.kind === 'DOUBLE' ? 'calcolata' : 'reale' }}</dt>
               <dd class="col-5">{{ slip.price | number: '1.2-4' }}</dd>
               <dt class="col-7">Probabilità stimata</dt>
@@ -150,7 +141,7 @@
               <dd class="col-5">{{ slip.potentialProfit | currency: 'EUR' }}</dd>
             </dl>
             <small class="text-secondary">{{ slip.rationale }}</small>
-            @if (v.frozen && v.current.policyVersion === 'five-slips-v2') {
+            @if (v.frozen) {
               <div>
                 <app-slip-result
                   [scenario]="v.current.scenarioId"
@@ -194,8 +185,8 @@
     <div class="table-responsive">
       <table class="table">
         <caption>
-          Storico delle puntate congelate. Esiti non disponibili restano in attesa, senza inventare
-          rimborsi.
+          Storico delle selezioni salvate. Importi calcolati con l'utile netto obiettivo; esiti non
+          disponibili restano in attesa, senza inventare rimborsi.
         </caption>
         <thead>
           <tr>

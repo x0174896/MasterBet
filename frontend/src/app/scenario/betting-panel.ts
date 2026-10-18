@@ -37,7 +37,6 @@ export class BettingPanel implements OnInit {
   readonly model = signal<'cups' | 'league'>('cups');
   unitValue = 5;
   initialBankrollUnits = 100;
-  maxRoundUnits = 2;
   save() {
     const view = this.view();
     if (!view || this.busy()) return;
@@ -81,7 +80,6 @@ export class BettingPanel implements OnInit {
           this.view.set(value);
           this.unitValue = value.current.config.unitValue;
           this.initialBankrollUnits = value.current.config.initialBankrollUnits;
-          this.maxRoundUnits = value.current.config.maxRoundUnits;
         },
         error: () => this.error.set('Impossibile caricare schedine e bilancio. Riprova.'),
       });
@@ -93,13 +91,14 @@ export class BettingPanel implements OnInit {
       !Number.isFinite(this.unitValue) ||
       this.unitValue < 0.04 ||
       this.unitValue > 10000 ||
-      !Number.isFinite(this.maxRoundUnits) ||
-      this.maxRoundUnits <= 0 ||
-      this.maxRoundUnits > 2 ||
       !Number.isFinite(this.initialBankrollUnits) ||
-      this.initialBankrollUnits < 1
+      this.initialBankrollUnits < 1 ||
+      this.initialBankrollUnits > 100000 ||
+      Math.abs(this.unitValue * 100 - Math.round(this.unitValue * 100)) > 1e-8
     ) {
-      this.error.set('Verifica unità, capitale e limite (massimo 2 unità per step).');
+      this.error.set(
+        'Verifica utile obiettivo (0,04–10.000 €, al centesimo) e capitale iniziale (1–100.000 unità).',
+      );
       return;
     }
     this.error.set('');
@@ -108,7 +107,6 @@ export class BettingPanel implements OnInit {
       .advance(view.current.scenarioId, {
         unitValue: this.unitValue,
         initialBankrollUnits: this.initialBankrollUnits,
-        maxRoundUnits: this.maxRoundUnits,
       })
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({

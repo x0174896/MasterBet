@@ -8,6 +8,12 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class SlipSelector {
+  private final ProfitTargetStaking staking;
+
+  public SlipSelector(ProfitTargetStaking staking) {
+    this.staking = staking;
+  }
+
   public List<Slip> select(
       Snapshot snapshot, List<Prediction> predictions, BettingConfig config, BigDecimal available) {
     var candidates =
@@ -45,25 +51,24 @@ public class SlipSelector {
     }
     List<Leg> legs = new ArrayList<>(unique.values());
     List<Slip> slips = new ArrayList<>();
-    BigDecimal budget =
-        config.unitValue().multiply(config.maxRoundUnits()).min(available).max(BigDecimal.ZERO);
+    BigDecimal budget = available.max(BigDecimal.ZERO);
     BigDecimal spent = BigDecimal.ZERO;
     int singles = legs.size() >= 6 ? 4 : Math.min(5, legs.size());
     for (int i = 0; i < singles; i++) {
-      var slip = slip("S" + (i + 1), List.of(legs.get(i)), new BigDecimal("0.4"), config);
+      var slip = slip("S" + (i + 1), List.of(legs.get(i)), config);
       if (spent.add(slip.stake()).compareTo(budget) <= 0) {
         slips.add(slip);
         spent = spent.add(slip.stake());
       }
     }
     if (legs.size() >= 6) {
-      var slip = slip("D1", List.of(legs.get(4), legs.get(5)), new BigDecimal("0.25"), config);
+      var slip = slip("D1", List.of(legs.get(4), legs.get(5)), config);
       if (spent.add(slip.stake()).compareTo(budget) <= 0) slips.add(slip);
     }
     return List.copyOf(slips);
   }
 
-  private Slip slip(String id, List<Leg> legs, BigDecimal units, BettingConfig config) {
+  private Slip slip(String id, List<Leg> legs, BettingConfig config) {
     BigDecimal price = BigDecimal.ONE;
     double probability = 1;
     for (var leg : legs) {
@@ -75,15 +80,11 @@ public class SlipSelector {
         legs.size() == 1 ? "SINGLE" : "DOUBLE",
         "unibet",
         legs,
-        units,
-        config.unitValue().multiply(units).setScale(2, RoundingMode.DOWN),
+        BigDecimal.ONE,
+        staking.stake(config.unitValue(), price),
         price,
         probability,
         price.doubleValue() * probability - 1,
-        "EV >= 5%, probabilita stimata >= 50%, quota singola <= 5; una esposizione per partita. "
-            + (legs.size() == 1
-                ? "Puntata fissa, nessun recupero delle perdite."
-                : "Prodotto simulato delle quote; probabilita sotto ipotesi di indipendenza,"
-                    + " multipla non verificata dal bookmaker."));
+        staking.rationale(legs.size() == 1 ? "SINGLE" : "DOUBLE"));
   }
 }

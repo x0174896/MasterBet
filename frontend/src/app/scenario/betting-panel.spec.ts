@@ -26,12 +26,12 @@ describe('Schedine e job unico', () => {
       modelId: 'model',
       cutoff: '2026-04-29T12:00:00Z',
       frozenAt: '2026-10-18T12:00:00Z',
-      config: { unitValue: 5, initialBankrollUnits: 100, maxRoundUnits: 2 },
+      config: { unitValue: 5, initialBankrollUnits: 100 },
       openingBankroll: 500,
       leagueOpeningBankroll: 500,
       cups: [],
       league: [],
-      policyVersion: 'five-slips-v2',
+      policyVersion: 'net-profit-unit-v3',
     },
     cups: evaluation,
     league: evaluation,
@@ -56,26 +56,29 @@ describe('Schedine e job unico', () => {
     const f = setup();
     expect(f.nativeElement.textContent).toContain('Nessuna schedina');
     expect(f.componentInstance.busy()).toBe(false);
+    expect(f.nativeElement.querySelector('#cap')).toBeNull();
+    expect(f.nativeElement.querySelector('label[for="unit"]').textContent).toContain('utile netto');
   });
   it('invia una sola richiesta completa e blocca doppi clic', () => {
     const f = setup();
+    f.componentInstance.unitValue = 10;
     f.componentInstance.advance();
     f.componentInstance.advance();
     const r = http.expectOne('/api/advance-job');
     expect(r.request.method).toBe('POST');
     expect(r.request.body).toEqual({
       expectedScenarioId: 'round7',
-      config: { unitValue: 5, initialBankrollUnits: 100, maxRoundUnits: 2 },
+      config: { unitValue: 10, initialBankrollUnits: 100 },
     });
     r.flush({}, { status: 503, statusText: 'Unavailable' });
     expect(f.componentInstance.error()).toContain('Avvio non confermato');
     expect(f.componentInstance.busy()).toBe(false);
   });
-  it('rifiuta limiti non validi senza contattare il backend', () => {
+  it('rifiuta utili obiettivo non validi senza contattare il backend', () => {
     const f = setup();
-    f.componentInstance.maxRoundUnits = 20;
+    f.componentInstance.unitValue = 0;
     f.componentInstance.advance();
-    expect(f.componentInstance.error()).toContain('massimo 2');
+    expect(f.componentInstance.error()).toContain('Verifica utile obiettivo');
     http.expectNone('/api/advance-job');
   });
   it('salva la proposta una sola volta e mantiene lo scenario corrente', () => {
@@ -101,11 +104,11 @@ describe('Schedine e job unico', () => {
             id: 'S1',
             kind: 'SINGLE',
             bookmaker: 'unibet',
-            units: 0.5,
-            stake: 2.5,
+            units: 1,
+            stake: 5.1,
             price: 1.98,
-            potentialPayout: 4.95,
-            potentialProfit: 2.45,
+            potentialPayout: 10.1,
+            potentialProfit: 5,
             probability: 0.62,
             expectedReturn: 0.2276,
             rationale: 'test',
@@ -138,6 +141,30 @@ describe('Schedine e job unico', () => {
     const text = (f.nativeElement as HTMLElement).textContent!.replace(/\s+/g, ' ');
     expect(text).toMatch(/Under\s*1\.5/);
     expect(text).toContain('Secondo tempo');
+    expect(text).toContain('Utile netto obiettivo (1 u)');
+    expect(text).toContain('Utile netto se vince');
+    const values = [...(f.nativeElement as HTMLElement).querySelectorAll('article dd')].map((n) =>
+      n.textContent!.trim(),
+    );
+    expect(values[0]).toContain('5.10');
+    expect(values[1]).toContain('5.00');
+    expect(values.at(-2)).toContain('10.10');
+    expect(values.at(-1)).toContain('5.00');
+  });
+  it('rifiuta importi con frazioni di centesimo e capitali fuori intervallo', () => {
+    const f = setup();
+    for (const [unit, capital] of [
+      [5.001, 100],
+      [5, 100001],
+      [Number.NaN, 100],
+    ]) {
+      f.componentInstance.unitValue = unit;
+      f.componentInstance.initialBankrollUnits = capital;
+      f.componentInstance.advance();
+      expect(f.componentInstance.busy()).toBe(false);
+      expect(f.componentInstance.error()).toContain('Verifica utile obiettivo');
+    }
+    http.expectNone('/api/advance-job');
   });
   it('recupera lo stato fallito lasciando consultabili le schedine', () => {
     const f = TestBed.createComponent(BettingPanel);

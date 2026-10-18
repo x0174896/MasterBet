@@ -64,11 +64,11 @@ class BettingTest {
     for (int i = 0; i < 7; i++) rows.add(prediction("f" + i));
     rows.add(prediction("f0"));
     var slips =
-        new SlipSelector()
+        new SlipSelector(new ProfitTargetStaking())
             .select(snapshot(rows), rows, BettingConfig.defaults(), new BigDecimal("500"));
     assertEquals(5, slips.size());
     assertEquals(
-        new BigDecimal("9.25"),
+        new BigDecimal("21.67"),
         slips.stream().map(Slip::stake).reduce(BigDecimal.ZERO, BigDecimal::add));
     assertEquals(
         6,
@@ -85,11 +85,11 @@ class BettingTest {
   void cannotSpendUnavailableCapitalAndDoesNotForceBets() {
     var rows = List.of(prediction("f"));
     assertTrue(
-        new SlipSelector()
+        new SlipSelector(new ProfitTargetStaking())
             .select(snapshot(rows), rows, BettingConfig.defaults(), new BigDecimal("1"))
             .isEmpty());
     assertTrue(
-        new SlipSelector()
+        new SlipSelector(new ProfitTargetStaking())
             .select(snapshot(List.of()), List.of(), BettingConfig.defaults(), new BigDecimal("500"))
             .isEmpty());
   }
@@ -101,7 +101,7 @@ class BettingTest {
             new Prediction(
                 quote("f", "correctscore", "fulltime", "4-3", "0"), .1, .1, 10., 1., true, "test"));
     assertTrue(
-        new SlipSelector()
+        new SlipSelector(new ProfitTargetStaking())
             .select(snapshot(rows), rows, BettingConfig.defaults(), new BigDecimal("500"))
             .isEmpty());
   }
@@ -129,7 +129,8 @@ class BettingTest {
     var rows = List.of(prediction("f"));
     var source = snapshot(rows);
     var slips =
-        new SlipSelector().select(source, rows, BettingConfig.defaults(), new BigDecimal("500"));
+        new SlipSelector(new ProfitTargetStaking())
+            .select(source, rows, BettingConfig.defaults(), new BigDecimal("500"));
     var round =
         new BettingRound(
             "step",
@@ -160,9 +161,9 @@ class BettingTest {
     var eval = new BettingEvaluator(new MarketSettlement());
     var pending = eval.evaluate(List.of(round), List.of(played), cutoff, true);
     assertEquals("PENDING", pending.slips().getFirst().status());
-    assertEquals(new BigDecimal("498.00"), pending.available());
+    assertEquals(new BigDecimal("495.00"), pending.available());
     var won = eval.evaluate(List.of(round), List.of(played), cutoff.plusSeconds(172800), true);
-    assertEquals(new BigDecimal("502.00"), won.bankroll());
+    assertEquals(new BigDecimal("505.00"), won.bankroll());
     assertEquals(1., won.roi());
     assertEquals(.16, won.binaryBrier(), 1e-12);
   }
@@ -170,23 +171,21 @@ class BettingTest {
   @Test
   void invalidConfigCannotCreateNegativeOrUnlimitedStakes() {
     assertThrows(
-        IllegalArgumentException.class,
-        () -> new BettingConfig(BigDecimal.ZERO, BigDecimal.TEN, BigDecimal.ONE));
+        IllegalArgumentException.class, () -> new BettingConfig(BigDecimal.ZERO, BigDecimal.TEN));
     assertThrows(
-        IllegalArgumentException.class,
-        () -> new BettingConfig(BigDecimal.TEN, BigDecimal.TEN, BigDecimal.TEN));
+        IllegalArgumentException.class, () -> new BettingConfig(BigDecimal.TEN, BigDecimal.ZERO));
   }
 
   @Test
   void fiveEligibleFixturesProduceFiveSinglesWithoutDuplicatingExposure() {
     var rows = java.util.stream.IntStream.range(0, 5).mapToObj(i -> prediction("f" + i)).toList();
     var slips =
-        new SlipSelector()
+        new SlipSelector(new ProfitTargetStaking())
             .select(snapshot(rows), rows, BettingConfig.defaults(), new BigDecimal("500"));
     assertEquals(5, slips.size());
     assertTrue(slips.stream().allMatch(s -> s.kind().equals("SINGLE")));
     assertEquals(
-        new BigDecimal("10.00"),
+        new BigDecimal("25.00"),
         slips.stream().map(Slip::stake).reduce(BigDecimal.ZERO, BigDecimal::add));
   }
 

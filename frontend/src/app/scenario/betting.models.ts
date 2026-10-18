@@ -1,7 +1,6 @@
 export interface BettingConfig {
   unitValue: number;
   initialBankrollUnits: number;
-  maxRoundUnits: number;
 }
 export interface BetLeg {
   home: string;

@@ -37,13 +37,7 @@ public class BettingWorkspaceService {
     if (!snapshot.id().equals(expectedScenarioId)) throw conflict("Scenario cambiato: ricaricare");
     betting.freeze(snapshot, BettingConfig.defaults());
     repository.lock(snapshot.id());
-    var round = repository.find(snapshot.id()).orElseThrow();
-    if (!BettingRound.CURRENT_POLICY.equals(round.policyVersion())) {
-      if (repository.revealed(snapshot.id()))
-        throw conflict("Esiti gia consultati: scelte non modificabili");
-      // Conserva l'originale. La nuova selezione usa soltanto lo snapshot e il capitale precedente.
-      repository.saveProposal(betting.prepareFresh(snapshot, round.config()));
-    }
+    // Il salvataggio ordinario non riscrive selezioni né applica revisioni retroattive.
     return betting.view(snapshot);
   }
 

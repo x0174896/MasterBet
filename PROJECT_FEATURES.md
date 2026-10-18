@@ -1,6 +1,6 @@
 # Inventario funzionale MasterBet
 
-Ultimo aggiornamento: 18 ottobre 2026 — avanzamento, cinque schedine salvate ed esiti consultabili.
+Ultimo aggiornamento: 18 ottobre 2026 — unità come utile netto obiettivo e ricalcolo monetario degli step 7–8, senza avanzamento.
 
 ## Funzionalità implementate
 
@@ -32,11 +32,13 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 
 ### Schedine, salvataggio e risultati
 
-- Obiettivo **cinque schedine per step e per variante**: quattro singole da 0,4 unità più una doppia da 0,25, su sei incontri distinti; con cinque soli incontri idonei, cinque singole da 0,4. Meno proposte se quote o capitale non bastano, senza forzare scommesse.
+- Obiettivo **cinque schedine per step e per variante**: quattro singole più una doppia, su sei incontri distinti; con cinque soli incontri idonei, cinque singole. Meno proposte se quote o capitale non bastano, senza forzare scommesse.
 - Selezione Unibet con EV teorico almeno 5%, probabilità stimata della singola almeno 50%, quota singola massimo 5; ordinamento per EV e una sola esposizione per partita. Il valore della quota multipla è un prodotto simulato, non una multipla confermata dal bookmaker.
-- Unità configurabile (default 5 €), capitale iniziale (100 unità), limite massimo 2 unità/step, capitale disponibile e somme impegnate. Puntate fisse senza recupero delle perdite o reintegri automatici. Le modifiche ai parametri valgono per il prossimo step.
-- Step 8 salvato: cinque schedine per entrambe le varianti, quattro puntate da 2 € e una da 1,25 €, totale 9,25 €. Scelte, quote, modello, hash e taglio conservati nel database e recuperati dopo ricaricamento/riavvio.
-- Proposta originaria conservata immutabile. La revisione a cinque dello step 8 è separata; lo step 7 resta con le quattro schedine originali. Non si riscrivono le scelte già valutate o dopo la consultazione degli esiti.
+- **Una unità = utile netto obiettivo per ogni schedina vincente** (default 5 €). Puntata = unità / (quota − 1), quota totale per le multiple. Puntata e ritorno lordo arrotondati HALF_UP al centesimo, puntata minima 0,01 €; utile effettivo mostrato separatamente dall'obiettivo. `units=1` nel contratto indica l'obiettivo netto, non la puntata.
+- Rimosso il limite per step; restano capitale iniziale (100 unità), capitale disponibile e somme impegnate. Il selettore omette una proposta non finanziabile, senza ridurne l'utile obiettivo, recuperare perdite o reintegrare capitale. Le modifiche ai parametri dall'interfaccia valgono per il prossimo step; il capitale iniziale resta quello della prima giornata salvata.
+- Step 8 salvato: cinque schedine per entrambe le varianti, puntate **2,33 / 5,10 / 4,76 / 6,25 / 1,65 €**, totale **20,09 €**. Utili in caso di vincita: 5,01 € per S1 e 5,00 € per le altre, per effetto dei centesimi. Scelte, quote, modello, hash e taglio invariati e recuperati dopo riavvio.
+- Ricalcolo retroattivo esplicitamente autorizzato, applicato alle quattro schedine dello step 7 e alle cinque dello step 8, per entrambe le varianti. Aggiornati importi, capitali di apertura, bilanci ed esiti già consultati. Originali delle proposte e dei sette esiti conservati in tabelle di revisione separate, oltre al backup locale.
+- Comando dedicato `--reprice-bets`, transazionale e idempotente: nessun download, addestramento o avanzamento. Rifiuta job attivi, snapshot incompatibili e capitale insufficiente; un errore annulla l'intera revisione. Il salvataggio ordinario non riscrive più proposte legacy. Selezioni, risultati e istanti di consultazione rimangono invariati.
 - **Occhio** su ogni schedina corrente e nello storico: scarica/verifica il referto NFF, mostra risultato esatto HT/SH/FT, esito di ogni selezione e della schedina, puntata, ritorno lordo e profitto/perdita. Esito persistito e riutilizzato; dati mancanti non diventano pareggi o perdite.
 - L'occhio salva gli esiti in un archivio separato: non modifica snapshot, addestramento, statistiche o bilancio al taglio. La liquidazione simulata avviene con l'avanzamento, quando i risultati entrano nel passato consentito.
 - Bilanci distinti campionato/coppe: profitto, ROI, capitale, disponibilità, drawdown misurato a fine step, profitti singole/doppie e Brier binario delle selezioni risolte. Importi decimali; ritorno lordo arrotondato al centesimo prima di sottrarre la puntata.
@@ -46,23 +48,23 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 - Viste schedine, quote, statistiche, modello. Filtri bookmaker/periodo/mercato, paginazione, ordinamento numerico EV crescente/decrescente prima della paginazione, valori mancanti in fondo. Linea, periodo, prezzo e timestamp visibili.
 - API di lettura preesistenti mantenute. Aggiunte API schedine, stato job, avvio avanzamento, salvataggio e consultazione esiti; contratto in `setup.md`. Nessuna chiave inviata al browser.
 - Nessuna modalità mock applicativa: stub soltanto nei test, aggiornati per i nuovi contratti. `MOCK_API_STUDIO.md` non descrive una funzionalità attiva.
-- Migrazioni Flyway V1–V3; database locale dedicato e ruolo non amministrativo. Backup locale prima delle migrazioni operative. Configurazione privata in `backend/.env.local`; segreti, cache, dati e `environment.md` esclusi da Git.
+- Migrazioni Flyway V1–V4; V4 archivia gli importi precedenti delle proposte e degli esiti. Database locale dedicato e ruolo non amministrativo. Backup locale prima delle migrazioni operative. Configurazione privata in `backend/.env.local`; segreti, cache, dati e `environment.md` esclusi da Git.
 - `dev-local.bat` apre due console indipendenti con log, backend 8080/frontend 4200. Chiudere una console termina soltanto il relativo albero di processi; log backend anche in `.local/backend.log`. Launcher rifiuta porte occupate e non arresta altre applicazioni.
 
 ## Verifiche eseguite
 
-- 70 test JUnit 5, inclusi persistenza/API su H2 isolato, selezione, budget, liquidazione per periodo, importi, salvataggi immutabili, isolamento dei risultati, errori dei job e finestre temporali.
-- 22 test Angular/Vitest e build di produzione, inclusi ordinamento EV, job, salvataggio, linee/periodi e apertura esiti/errori/cambio modello.
+- 78 test JUnit 5, inclusi persistenza/API su H2 isolato, selezione, capitale, liquidazione per periodo, arrotondamenti, ricalcolo delle due varianti, archivio originale, rollback, idempotenza, isolamento dei risultati e download dell'occhio concorrente al ricalcolo.
+- 23 test Angular/Vitest e build di produzione, inclusi unità come utile netto, assenza del limite, invio dei parametri aggiornati, ordinamento EV, job, salvataggio, linee/periodi e apertura esiti/errori/cambio modello.
 - Avanzamento reale 7 → 8, ripresa da cache dopo un errore su un evento estraneo, addestramento e pubblicazione PostgreSQL.
 - Audit indipendente di 171 risposte OddsPapi, 139 punteggi usati, tutte le 1.787 quote e statistiche/API delle 16 squadre. Riscontro NFF dei 47 risultati originari e dei 10 nuovi referti.
-- Audit indipendente delle 22 selezioni dei due step e delle due varianti: probabilità ricalcolate da pesi/caratteristiche, prezzi, puntate, ritorni e bilanci. Verificati anche due esiti consultati (una singola vinta e una doppia persa) contro i referti NFF, con hash dello snapshot invariato.
-- Browser reale: cinque proposte, consultazione dei punteggi e del netto, riapertura dell'esito salvato, ordinamento EV in entrambe le direzioni.
+- Audit indipendente delle 22 selezioni dei due step e delle due varianti: probabilità ricalcolate da pesi/caratteristiche, prezzi, puntate a utile netto obiettivo, ritorni, capitali di apertura, ROI e drawdown. Verificati tutti i sette esiti consultati contro NFF e gli originali archiviati. Snapshot completi, modelli e stato del job confrontati con il backup: invariati.
+- Browser reale: cinque proposte con importi aggiornati, campo utile obiettivo, rimozione del limite, consultazione del netto ricalcolato e del risultato già salvato. Ordinamento EV già verificato nello sviluppo precedente, invariato.
 - Contatore OddsPapi verificato il 18 ottobre: **241/250**, 9 richieste residue. Questo avanzamento ha usato 2 richieste fatturate. Consultazione delle schedine salvate ed esiti NFF non consumano richieste OddsPapi.
 - Test delle due console e della loro terminazione indipendente già verificati nello sviluppo del launcher, invariato in questa modifica.
 
 ## Limiti
 
-- Nessuna vincita garantita: pochi dati, probabilità non calibrate estesamente, modelli Poisson con ipotesi di indipendenza. Il profitto liquidato dello step 7 (+0,51 €) è un singolo esperimento, non prova di redditività.
+- Nessuna vincita garantita: pochi dati, probabilità non calibrate estesamente, modelli Poisson con ipotesi di indipendenza. Il nuovo ricalcolo dello step 7 produce +5,29 € su 16,71 €; quello dello step 8, già consultato con l'occhio, +7,11 € su 20,09 €. Sono confronti retrospettivi richiesti dopo la conoscenza degli esiti, non prove indipendenti di redditività.
 - La consultazione dell'occhio rivela il futuro all'utente: eventuali decisioni manuali successive non costituiscono più un test cieco. I calcoli automatici restano separati dal futuro.
 - La liquidazione rappresenta le regole matematiche dei mercati supportati sui risultati sul campo nei 90 minuti. Non certifica accettazione della multipla, fiscalità o regole particolari del bookmaker; annullamenti/rimborsi non implementati.
 - Il contesto coppe comprende solo incontri conclusi al taglio, non il carico programmato fra taglio e target. Nessun dato su formazioni, infortuni, minuti o distanze di viaggio.
@@ -72,6 +74,7 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 
 ## Registro delle modifiche
 
+- 18 ottobre 2026: unità come utile netto obiettivo per schedina, rimosso limite per step, ricalcolo autorizzato di storico/proposte/esiti con archivio originale, nessun avanzamento oltre lo step 8. Capitale al taglio 505,29 €, disponibile 485,20 €, impegnato 20,09 € per entrambe le varianti.
 - 18 ottobre 2026: job unico di avanzamento, riaddestramento, bilanci, EV ordinabile, cinque schedine persistite ed occhio con referti verificati e archivio separato. Avanzato e verificato lo step 8; originali conservati.
 - 18 ottobre 2026: due console indipendenti, log visibili, chiusura degli alberi di processi, arresto selettivo e test isolato del ciclo di vita.
 - 18 ottobre 2026: `dev-local.bat`, porte e proxy 8080/4200, audit e istruzioni di avvio.

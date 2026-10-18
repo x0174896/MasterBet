@@ -80,11 +80,27 @@ latest=max(snapshots.values(),key=lambda s:time(s['dataset']['cutoff']))
 scores={m['fixture']['id']:m['score'] for m in latest['dataset']['leagueHistory']}
 with urllib.request.urlopen('http://127.0.0.1:8080/api/betting',timeout=20) as r: public=json.loads(r.read(),parse_float=Decimal)
 checked=0
+def available_at(previous, source, variant, initial):
+    known={m['fixture']['id']:m['score'] for m in source['dataset']['leagueHistory']
+           if time(m['fixture']['endedAt']) <= time(source['dataset']['cutoff'])}
+    capital=initial
+    for old in previous:
+        for slip in old[variant]:
+            capital-=slip['stake']
+            if all(l['quote']['fixtureId'] in known for l in slip['legs']) and all(won(l['quote'],known[l['quote']['fixtureId']]) for l in slip['legs']):
+                capital+=(slip['stake']*slip['price']).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
+    return capital
+
 for variant in ('cups','league'):
     initial=Decimal(rounds[0]['config']['unitValue'])*Decimal(rounds[0]['config']['initialBankrollUnits'])
     net=Decimal(0); closed=Decimal(0); pending=Decimal(0); brier=0.; resolved=0
-    for round_ in rounds:
+    peak=initial; drawdown=Decimal(0); singles=Decimal(0); doubles=Decimal(0)
+    for index, round_ in enumerate(rounds):
         source=snapshots[round_['scenarioId']]; assert round_['datasetSha256']==source['datasetSha256']
+        assert round_['policyVersion']=='net-profit-unit-v3'
+        assert 'maxRoundUnits' not in round_['config']
+        opening=round_['openingBankroll' if variant=='cups' else 'leagueOpeningBankroll']
+        assert opening==available_at(rounds[:index], source, variant, initial)
         quotes={(q['fixtureId'],q['bookmaker'],q['market']['id'],q['outcomeId']):q for q in source['dataset']['quotes']}
         fixtures={f['id']:f for f in source['dataset']['targets']}
         used=set(); spent=Decimal(0)
@@ -104,22 +120,31 @@ for variant in ('cups','league'):
                     brier+=(predicted-int(outcome))**2; resolved+=1
             assert price==slip['price'] and abs(p-float(slip['probability']))<1e-10
             assert abs(p*float(price)-1-float(slip['expectedReturn']))<1e-10
-            assert slip['stake']==(Decimal(round_['config']['unitValue'])*Decimal(slip['units'])).quantize(Decimal('.01'),rounding='ROUND_DOWN')
+            assert slip['units']==1 and price > 1
+            assert slip['stake']==max(Decimal('.01'), (Decimal(round_['config']['unitValue'])/(price-1)).quantize(Decimal('.01'),rounding=ROUND_HALF_UP))
+            gross=(slip['stake']*price).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
+            assert slip['potentialPayout']==gross and slip['potentialProfit']==gross-slip['stake']
             spent+=slip['stake']
             if complete:
-                closed+=slip['stake']; net+=(slip['stake']*price).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)-slip['stake'] if success else -slip['stake']
+                gain=gross-slip['stake'] if success else -slip['stake']
+                closed+=slip['stake']; net+=gain
+                if slip['kind']=='SINGLE': singles+=gain
+                else: doubles+=gain
             else: pending+=slip['stake']
-        assert spent <= Decimal(round_['config']['unitValue'])*Decimal(round_['config']['maxRoundUnits'])
-        assert spent <= round_['openingBankroll' if variant=='cups' else 'leagueOpeningBankroll']
+        assert spent <= opening
+        peak=max(peak,initial+net); drawdown=max(drawdown,peak-(initial+net))
     actual=public[variant]
     assert (actual['profit'],actual['closedStake'],actual['pendingStake'],actual['bankroll'],actual['available'])==(net,closed,pending,initial+net,initial+net-pending)
     assert actual['resolvedLegs']==resolved
+    assert (actual['maxDrawdown'],actual['singlesProfit'],actual['doublesProfit'])==(drawdown,singles,doubles)
+    if closed: assert abs(float(actual['roi'])-float(net/closed))<1e-9
     if resolved: assert abs(float(actual['binaryBrier'])-brier/resolved)<1e-10
 reveals=load('betting-reveals.json')
 for reveal in reveals:
     source=snapshots[reveal['scenarioId']]
     round_=next(r for r in rounds if r['scenarioId']==reveal['scenarioId'])
     slip=next(s for s in round_[reveal['variant']] if s['id']==reveal['slipId'])
+    assert reveal['stake']==slip['stake']
     assert [row['leg'] for row in reveal['results']]==slip['legs']
     official=nff_scores(ROOT,[{'fixture':f} for f in source['dataset']['targets']])
     complete=True; success=True
@@ -134,6 +159,27 @@ for reveal in reveals:
     if complete:
         payout=(slip['stake']*slip['price']).quantize(Decimal('.01'),rounding=ROUND_HALF_UP) if success else Decimal(0)
         assert reveal['payout']==payout and reveal['profit']==payout-slip['stake']
-report={'status':'PASS','rounds':len(rounds),'legs_checked_in_both_models':checked,'probabilities_recomputed':True,'stakes_payouts_bankroll_verified':True,'saved_reveals_verified':len(reveals)}
+    else: assert reveal['payout'] is None and reveal['profit'] is None
+
+revisions=load('betting-round-revisions.json')
+for original in revisions:
+    current=next(r for r in rounds if r['scenarioId']==original['scenarioId'])
+    for field in ('scenarioId','datasetSha256','modelId','cutoff','frozenAt'):
+        assert original[field]==current[field]
+    for field in ('unitValue','initialBankrollUnits'):
+        assert original['config'][field]==current['config'][field]
+    for variant in ('cups','league'):
+        assert len(original[variant])==len(current[variant])
+        for before,after in zip(original[variant],current[variant]):
+            for field in ('id','kind','bookmaker','legs','price','probability','expectedReturn'):
+                assert before[field]==after[field], (original['scenarioId'],variant,field)
+reveal_revisions=load('betting-reveal-revisions.json')
+for original in reveal_revisions:
+    current=next(r for r in reveals if all(r[k]==original[k] for k in ('scenarioId','variant','slipId')))
+    # Gli esiti finali sono immutabili; un'attesa può essere risolta dopo il ricalcolo.
+    if original['status']!='PENDING':
+        for field in ('checkedAt','status','results'):
+            assert original[field]==current[field]
+report={'status':'PASS','rounds':len(rounds),'legs_checked_in_both_models':checked,'probabilities_recomputed':True,'stakes_payouts_bankroll_verified':True,'saved_reveals_verified':len(reveals),'original_rounds_preserved':len(revisions),'original_reveals_preserved':len(reveal_revisions)}
 (ROOT/'.local/audit/betting-report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
 print(json.dumps(report,indent=2))

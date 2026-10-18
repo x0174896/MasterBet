@@ -55,6 +55,28 @@ public class BettingRepository {
         "SELECT scenario_id FROM betting_round WHERE scenario_id=? FOR UPDATE", String.class, id);
   }
 
+  /** Chiamato solo dal ricalcolo transazionale esplicito, con blocco della giornata. */
+  public void replaceAmounts(BettingRound round) {
+    jdbc.update(
+        "INSERT INTO"
+            + " betting_round_revision(scenario_id,policy_version,archived_at,previous_payload)"
+            + " SELECT r.scenario_id,?,?,COALESCE(p.payload,r.payload) FROM betting_round r LEFT"
+            + " JOIN betting_proposal p ON p.scenario_id=r.scenario_id WHERE r.scenario_id=?",
+        round.policyVersion(),
+        java.time.Instant.now().toString(),
+        round.scenarioId());
+    try {
+      int count =
+          jdbc.update(
+              "UPDATE betting_proposal SET payload=? WHERE scenario_id=?",
+              mapper.writeValueAsString(round),
+              round.scenarioId());
+      if (count == 0) saveProposal(round);
+    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      throw new IllegalStateException("Ricalcolo schedine non serializzabile");
+    }
+  }
+
   public boolean revealed(String id) {
     return jdbc.queryForObject(
             "SELECT count(*) FROM betting_reveal_lock WHERE scenario_id=?", Integer.class, id)

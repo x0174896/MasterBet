@@ -19,7 +19,7 @@ class SlipRevealTest {
     var helper = new BettingTest();
     var source = helper.snapshot(List.of(helper.prediction("f")));
     var slips =
-        new SlipSelector()
+        new SlipSelector(new ProfitTargetStaking())
             .select(source, source.predictions(), BettingConfig.defaults(), new BigDecimal("500"));
     var round =
         new BettingRound(
@@ -51,8 +51,8 @@ class SlipRevealTest {
         new SlipRevealService(workspace, repo, snapshots, calendar, scores, new MarketSettlement());
     var reveal = service.reveal("step", "cups", "S1");
     assertEquals("WON", reveal.status());
-    assertEquals(new BigDecimal("4.00"), reveal.payout());
-    assertEquals(new BigDecimal("2.00"), reveal.profit());
+    assertEquals(new BigDecimal("10.00"), reveal.payout());
+    assertEquals(new BigDecimal("5.00"), reveal.profit());
     assertEquals(0, reveal.results().getFirst().score().homeSecondHalf());
     assertEquals(2, reveal.results().getFirst().score().awaySecondHalf());
     assertTrue(source.dataset().leagueHistory().isEmpty());

@@ -18,7 +18,7 @@ public record BettingRound(
     List<Slip> cups,
     List<Slip> league,
     String policyVersion) {
-  public static final String CURRENT_POLICY = "five-slips-v2";
+  public static final String CURRENT_POLICY = "net-profit-unit-v3";
 
   public BettingRound(
       String scenarioId,

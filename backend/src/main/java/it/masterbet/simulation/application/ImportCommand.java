@@ -16,6 +16,8 @@ public class ImportCommand implements ApplicationRunner {
 
   public void run(ApplicationArguments args) {
     if (args.containsOption("import-scenario")) {
+      if (args.containsOption("reprice-bets"))
+        throw new IllegalArgumentException("Importazione e ricalcolo sono comandi separati");
       var snapshot = importer.importScenario();
       System.out.println(
           "MASTERBET_IMPORT_OK history="
