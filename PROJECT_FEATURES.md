@@ -1,6 +1,6 @@
 # Inventario funzionale MasterBet
 
-Ultimo aggiornamento: 18 ottobre 2026.
+Ultimo aggiornamento: 18 ottobre 2026 — launcher `dev-local.bat` e nuove porte locali.
 
 ## Prima versione implementata
 
@@ -44,7 +44,8 @@ Applicazione locale Angular 22 e Java 25 / Spring Boot 4.1, con PostgreSQL 18. F
 ### Ambiente operativo
 
 - Database dedicato `masterbet_local`, ruolo `masterbet_app` senza privilegi amministrativi e accesso HBA limitato al database locale. Migrazioni Flyway versionate.
-- Launcher e arresto PowerShell dei soli processi MasterBet, con verifica di percorso, comando e data di creazione del PID. Porte 8081 e 4201.
+- Avvio con `dev-local.bat`: compilazione backend, ricerca JDK 25, backend su 8080 e frontend su 4200 con proxy coerente. Attesa della disponibilità HTTP e messaggi di errore per porte occupate; nessun arresto di altri programmi. Opzione `--no-pause` per automazione.
+- Launcher e arresto PowerShell dei soli processi MasterBet, con verifica di percorso, comando e data di creazione del PID. Rifiuto di avvii duplicati; in caso di avvio parziale fallito vengono arrestati solo i nuovi processi del tentativo.
 - Configurazione privata in `backend/.env.local`; dati, log, cache, ambiente locale e segreti esclusi da Git. Nessuna dipendenza dai servizi di altre applicazioni.
 - Script di export e audit indipendente dei dati. Comandi e prerequisiti in `setup.md`.
 
@@ -52,6 +53,7 @@ Applicazione locale Angular 22 e Java 25 / Spring Boot 4.1, con PostgreSQL 18. F
 
 - 46 test JUnit 5, inclusi dominio, acquisizione, esclusione di dati futuri, persistenza transazionale e API Spring con H2 isolato.
 - 13 test Angular/Vitest e build di produzione.
+- Launcher verificato da una cartella diversa, con porta occupata e doppio avvio rifiutati, avvio reale su 8080/4200, proxy API coerente e pulizia dei processi dopo un errore frontend provocato nel test.
 - Audit di 163 risposte originali, 129 punteggi usati e tutte le 1.998 quote, statistiche e risposte API degli 8 eventi.
 - Riscontro esterno di tutti i 47 primi tempi, finali e orari del campionato 2026 contro i referti ufficiali NFF. Le 80 partite di addestramento sono confrontate con il payload originale del provider, non tutte con una seconda fonte indipendente.
 - Importazione senza chiave API ripetibile sullo stesso archivio, con hash dati invariato.
@@ -71,4 +73,5 @@ Applicazione locale Angular 22 e Java 25 / Spring Boot 4.1, con PostgreSQL 18. F
 
 ## Registro delle modifiche
 
+- 18 ottobre 2026: aggiunto `dev-local.bat`, aggiornati porte, proxy, audit e istruzioni di avvio. Quote, statistiche, modello e contratto delle API invariati.
 - 18 ottobre 2026: prima implementazione funzionante del simulatore storico, database, downloader separati, statistiche, addestramento, interfaccia e controlli di integrità. Sostituito l'inventario iniziale con lo stato verificabile della versione.

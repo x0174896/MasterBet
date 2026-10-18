@@ -156,6 +156,6 @@ def audit(root, snapshot_path, api):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--snapshot', default='.local/audit/snapshot.json')
-    parser.add_argument('--api', default='http://127.0.0.1:8081')
+    parser.add_argument('--api', default='http://127.0.0.1:8080')
     args = parser.parse_args()
     audit(pathlib.Path.cwd(), pathlib.Path(args.snapshot), args.api)

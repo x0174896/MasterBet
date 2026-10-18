@@ -9,7 +9,7 @@ npm run build
 npm test -- --watch=false
 ```
 
-`npm start` ascolta su `127.0.0.1:4201` e inoltra `/api/**` al backend locale sulla porta 8081. Il backend e lo scenario importato sono necessari. Non c'è una modalità mock applicativa.
+`npm start` ascolta su `127.0.0.1:4200` e inoltra `/api/**` al backend locale sulla porta 8080. Per avviare entrambi con un doppio clic usare `dev-local.bat` nella radice del progetto. Il backend e lo scenario importato sono necessari. Non c'è una modalità mock applicativa.
 
 `scenario-api` gestisce HTTP; `scenario-state` caricamenti, errori e annullamento delle richieste precedenti; `quote-table`, `statistics-panel` e `model-panel` presentano dati tipizzati. I mercati non modellati restano consultabili senza probabilità inventate. Soglie, bookmaker e timestamp sono sempre distinti dal valore stimato dal modello.
 

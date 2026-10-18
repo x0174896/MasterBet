@@ -31,7 +31,7 @@ Creare `backend/.env.local` dal modello `backend/.env.example`, senza sovrascriv
 | `DB_USERNAME` | Ruolo applicativo dedicato |
 | `DB_PASSWORD` | Password privata del ruolo |
 | `ODDSPAPI_KEY` | Chiave gratuita; necessaria solo per risposte non ancora in cache |
-| `SERVER_PORT` | Opzionale, default 8081 |
+| `SERVER_PORT` | Opzionale per avvio Java diretto, default 8080; il launcher imposta esplicitamente 8080 |
 | `MASTERBET_DATA_DIR` | Opzionale, default `../.local/data` dalla cartella backend |
 
 Database previsto: `masterbet_local`; ruolo: `masterbet_app`; host: `127.0.0.1:5432`. La password non è documentata nel repository. `environment.md` è locale, ignorato e non contiene segreti.
@@ -98,20 +98,32 @@ Lo stesso archivio produce lo stesso hash dei dati. Modelli e snapshot sono salv
 
 ## Avvio locale
 
-Dalla radice, dopo build backend e installazione frontend:
+Doppio clic su **`dev-local.bat`** nella radice del progetto, oppure da terminale:
+
+```bat
+dev-local.bat
+```
+
+Il batch funziona anche se chiamato da un'altra cartella. Usa Windows PowerShell senza modificare le policy globali, cerca un JDK 25 tramite `JAVA_HOME` o fra le installazioni in `%ProgramFiles%\Java`, e abilita lo store certificati Windows per il processo Java/Maven. Richiede Node.js disponibile nel PATH, dipendenze frontend già installate con `npm ci`, configurazione privata e PostgreSQL avviato. Non richiede privilegi amministrativi per l'avvio ordinario.
+
+Il launcher controlla prima entrambe le porte e i processi registrati, poi compila il backend con `mvnw package -DskipTests` (log `.local/build-backend.log`). La compilazione di avvio non sostituisce i test obbligatori prima della pubblicazione. Attende la risposta del backend e poi quella del proxy frontend, fino a 60 secondi per servizio. Se un servizio appena avviato fallisce, arresta soltanto i processi creati da quel tentativo. Una porta occupata produce un errore con il PID, senza terminare il programma che la usa e senza scegliere una porta alternativa.
+
+La finestra del batch resta aperta per leggere l'esito; `dev-local.bat --no-pause` restituisce il codice di uscita al termine dell'avvio senza attendere un tasto. Chiudere la finestra del batch non arresta i servizi. Per riavviare usare prima `scripts/stop-local.ps1`.
+
+Avvio PowerShell alternativo, con percorso JDK esplicito se necessario:
 
 ```powershell
 .\scripts\start-local.ps1 -JavaHome $env:JAVA_HOME
 ```
 
-Su questo PC si può aggiungere `-UseWindowsTrustStore`. Il comando avvia processi nascosti, rifiuta porte occupate e registra PID, percorso e data di avvio in `.local`. Non esegue importazioni.
+Su questo PC aggiungere `-UseWindowsTrustStore` se si usa direttamente lo script PowerShell (il batch lo passa già). Il comando avvia processi nascosti e registra PID, percorso e data di avvio in `.local`. Non esegue importazioni.
 
-- Interfaccia: http://127.0.0.1:4201
-- Salute HTTP: http://127.0.0.1:8081/api/health
+- Interfaccia: http://127.0.0.1:4200
+- Salute HTTP: http://127.0.0.1:8080/api/health
 - Scenario: `GET /api/scenario`
 - Quote: `GET /api/matches/{fixtureId}/quotes`
 
-Angular inoltra `/api/**` al backend tramite `proxy.conf.json`. Per avvio in terminali separati: `java -jar target/masterbet-backend-0.1.0.jar` da `backend`, `npm start` da `frontend`. Entrambi ascoltano solo localhost. I servizi preesistenti sulle porte 8080 e 4200 non vengono toccati. Non è predisposta un'esposizione pubblica o un'autenticazione multiutente.
+Angular inoltra `/api/**` al backend sulla porta 8080 tramite `proxy.conf.json`. Per avvio in terminali separati, dopo la build: `java -jar target/masterbet-backend-0.1.0.jar --server.port=8080` da `backend`, `npm start` da `frontend`. Entrambi ascoltano solo localhost. Eventuali altri servizi sulle porte richieste devono essere chiusi dal loro proprietario: il launcher non li arresta. Non è predisposta un'esposizione pubblica o un'autenticazione multiutente.
 
 Arresto dei soli processi avviati dal launcher:
 
