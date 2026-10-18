@@ -134,29 +134,30 @@
                     {{ leg.quote.market.line | number: '1.1-2' }}
                   }
                 </strong>
-                @ {{ leg.quote.price | number: '1.2-3' }}<br /><small
-                  >{{ periodLabel(leg.quote.market.period) }} · Quota aggiornata
-                  {{ leg.quote.observedAt | date: 'dd/MM HH:mm' : 'UTC' }} UTC</small
-                >
+                @if (slip.kind === 'DOUBLE') {
+                  @ {{ leg.quote.price | number: '1.2-3' }}
+                }
+                <br /><small>{{ periodLabel(leg.quote.market.period) }}</small>
               </p>
             }
             <dl class="row mb-1">
               <dt class="col-7">Puntata virtuale</dt>
               <dd class="col-5">{{ slip.stake | currency: 'EUR' }}</dd>
-              <dt class="col-7">Utile netto obiettivo (1 u)</dt>
-              <dd class="col-5">{{ v.current.config.unitValue | currency: 'EUR' }}</dd>
-              <dt class="col-7">Quota {{ slip.kind === 'DOUBLE' ? 'calcolata' : 'reale' }}</dt>
+              <dt class="col-7">
+                Quota {{ slip.kind === 'DOUBLE' ? 'totale simulata' : 'reale' }}
+              </dt>
               <dd class="col-5">{{ slip.price | number: '1.2-4' }}</dd>
               <dt class="col-7">Probabilità stimata</dt>
               <dd class="col-5">{{ slip.probability | percent: '1.1-1' }}</dd>
-              <dt class="col-7">Valore atteso</dt>
-              <dd class="col-5">{{ slip.expectedReturn | percent: '1.1-1' }}</dd>
-              <dt class="col-7">Ritorno lordo se vince</dt>
+              <dt class="col-7">Ritorno lordo</dt>
               <dd class="col-5">{{ slip.potentialPayout | currency: 'EUR' }}</dd>
-              <dt class="col-7">Utile netto se vince</dt>
-              <dd class="col-5">{{ slip.potentialProfit | currency: 'EUR' }}</dd>
+              <dt class="col-7" title="Valore atteso: probabilità stimata × quota − 1">
+                Delta (EV)
+              </dt>
+              <dd class="col-5">
+                {{ slip.expectedReturn > 0 ? '+' : '' }}{{ slip.expectedReturn | percent: '1.1-1' }}
+              </dd>
             </dl>
-            <small class="text-secondary">{{ slip.rationale }}</small>
             @if (v.frozen) {
               <div>
                 <app-slip-result

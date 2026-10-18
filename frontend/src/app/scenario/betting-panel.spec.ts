@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { BettingPanel } from './betting-panel';
-import { BettingView } from './betting.models';
+import { BetSlip, BettingView } from './betting.models';
 import { vi } from 'vitest';
 describe('Schedine e job unico', () => {
   let http: HttpTestingController;
@@ -19,6 +19,40 @@ describe('Schedine e job unico', () => {
     doublesProfit: 0,
     resolvedLegs: 0,
     binaryBrier: null,
+  };
+  const single: BetSlip = {
+    id: 'S1',
+    kind: 'SINGLE',
+    bookmaker: 'unibet',
+    units: 1,
+    stake: 5.1,
+    price: 1.98,
+    potentialPayout: 10.1,
+    potentialProfit: 5,
+    probability: 0.62,
+    expectedReturn: 0.2276,
+    rationale: 'Motivazione estesa da non mostrare',
+    legs: [
+      {
+        home: 'A',
+        away: 'B',
+        kickoff: '2026-05-10T15:00:00Z',
+        probability: 0.62,
+        quote: {
+          fixtureId: 'f',
+          bookmaker: 'unibet',
+          outcome: 'Under',
+          price: 1.98,
+          observedAt: '2026-05-06T10:00:00Z',
+          market: {
+            name: 'Over Under Second Half',
+            type: 'totals',
+            period: 'p2',
+            line: 1.5,
+          },
+        },
+      },
+    ],
   };
   const view: BettingView = {
     current: {
@@ -48,10 +82,10 @@ describe('Schedine e job unico', () => {
     http.verify();
     vi.useRealTimers();
   });
-  function setup() {
+  function setup(selectedView: BettingView = view) {
     const f = TestBed.createComponent(BettingPanel);
     f.detectChanges();
-    http.expectOne('/api/betting').flush(view);
+    http.expectOne('/api/betting').flush(selectedView);
     http.expectOne('/api/advance-job').flush({ status: 'IDLE', message: 'Nessun job' });
     f.detectChanges();
     return f;
@@ -101,63 +135,91 @@ describe('Schedine e job unico', () => {
     expect(f.componentInstance.busy()).toBe(false);
     http.expectNone('/api/advance-job');
   });
-  it('mostra linea e periodo della giocata senza confondere primo e secondo tempo', () => {
-    const f = setup();
-    f.componentInstance.view.set({
+  it('mostra solo i cinque indicatori richiesti conservando partita, linea e periodo', () => {
+    const f = setup({
       ...view,
       current: {
         ...view.current,
-        cups: [
-          {
-            id: 'S1',
-            kind: 'SINGLE',
-            bookmaker: 'unibet',
-            units: 1,
-            stake: 5.1,
-            price: 1.98,
-            potentialPayout: 10.1,
-            potentialProfit: 5,
-            probability: 0.62,
-            expectedReturn: 0.2276,
-            rationale: 'test',
-            legs: [
-              {
-                home: 'A',
-                away: 'B',
-                kickoff: '2026-05-10T15:00:00Z',
-                probability: 0.62,
-                quote: {
-                  fixtureId: 'f',
-                  bookmaker: 'unibet',
-                  outcome: 'Under',
-                  price: 1.98,
-                  observedAt: '2026-05-06T10:00:00Z',
-                  market: {
-                    name: 'Over Under Second Half',
-                    type: 'totals',
-                    period: 'p2',
-                    line: 1.5,
-                  },
-                },
-              },
-            ],
-          },
-        ],
+        cups: [single],
       },
     });
-    f.detectChanges();
-    const text = (f.nativeElement as HTMLElement).textContent!.replace(/\s+/g, ' ');
+    const article = (f.nativeElement as HTMLElement).querySelector('article')!;
+    const text = article.textContent!.replace(/\s+/g, ' ');
+    expect(text).toContain('A – B');
     expect(text).toMatch(/Under\s*1\.5/);
     expect(text).toContain('Secondo tempo');
-    expect(text).toContain('Utile netto obiettivo (1 u)');
-    expect(text).toContain('Utile netto se vince');
-    const values = [...(f.nativeElement as HTMLElement).querySelectorAll('article dd')].map((n) =>
-      n.textContent!.trim(),
+    expect(text).not.toContain('Utile netto');
+    expect(text).not.toContain('Quota aggiornata');
+    expect(text).not.toContain(single.rationale);
+    expect([...article.querySelectorAll('dt')].map((n) => n.textContent!.trim())).toEqual([
+      'Puntata virtuale',
+      'Quota reale',
+      'Probabilità stimata',
+      'Ritorno lordo',
+      'Delta (EV)',
+    ]);
+    const values = [...article.querySelectorAll('dd')].map((n) =>
+      n.textContent!.replace(/\s+/g, '').trim(),
     );
+    expect(values).toHaveLength(5);
     expect(values[0]).toContain('5.10');
-    expect(values[1]).toContain('5.00');
-    expect(values.at(-2)).toContain('10.10');
-    expect(values.at(-1)).toContain('5.00');
+    expect(values[1]).toBe('1.98');
+    expect(values[2]).toBe('62.0%');
+    expect(values[3]).toContain('10.10');
+    expect(values[4]).toBe('+22.8%');
+  });
+  it.each([
+    [-0.1234, '-12.3%'],
+    [0, '0.0%'],
+  ])('mostra il delta %s ricevuto dal backend anche nel modello campionato', (delta, formatted) => {
+    const f = setup({
+      ...view,
+      current: { ...view.current, league: [{ ...single, expectedReturn: delta }] },
+    });
+    f.componentInstance.model.set('league');
+    f.detectChanges();
+    const article = (f.nativeElement as HTMLElement).querySelector('article')!;
+    expect(article.querySelectorAll('dt')).toHaveLength(5);
+    expect(article.querySelector('dd:last-child')!.textContent!.replace(/\s+/g, '')).toBe(
+      formatted,
+    );
+  });
+  it('distingue la quota totale simulata della doppia dalle quote reali delle due selezioni', () => {
+    const double: BetSlip = {
+      ...single,
+      id: 'D1',
+      kind: 'DOUBLE',
+      stake: 1.71,
+      price: 3.9204,
+      probability: 0.3844,
+      expectedReturn: 0.50700376,
+      potentialPayout: 6.7,
+      legs: [
+        single.legs[0],
+        {
+          ...single.legs[0],
+          home: 'C',
+          away: 'D',
+          quote: { ...single.legs[0].quote, fixtureId: 'f2' },
+        },
+      ],
+    };
+    const f = setup({ ...view, current: { ...view.current, cups: [double] } });
+    const article = (f.nativeElement as HTMLElement).querySelector('article')!;
+    const text = article.textContent!.replace(/\s+/g, ' ');
+    expect(text).toContain('A – B');
+    expect(text).toContain('C – D');
+    expect(text.match(/@\s*1\.98/g)).toHaveLength(2);
+    expect(article.querySelectorAll('dt')).toHaveLength(5);
+    expect(text).toContain('Quota totale simulata');
+    const values = [...article.querySelectorAll('dd')].map((n) =>
+      n.textContent!.replace(/\s+/g, ''),
+    );
+    expect(values[1]).toBe('3.9204');
+    expect(values[2]).toBe('38.4%');
+    expect(values[4]).toBe('+50.7%');
+    expect(text).not.toContain('Utile netto');
+    expect(text).not.toContain(double.rationale);
   });
   it('rifiuta importi con frazioni di centesimo e capitali fuori intervallo', () => {
     const f = setup();

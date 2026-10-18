@@ -176,6 +176,8 @@ Le verifiche obbligatorie prima della pubblicazione sono `mvnw test`, `npm run b
 
 Aprire «Schedine e avanzamento», scegliere l'utile netto obiettivo per ogni schedina (valore dell'unità) per il prossimo step, poi premere «Avanza uno step e calcola le schedine». Non c'è un limite di spesa per step; resta il capitale disponibile. Il capitale iniziale non si modifica dopo il primo salvataggio. Le impostazioni non riscrivono le schedine correnti.
 
+I riquadri delle proposte mostrano cinque indicatori: puntata virtuale, quota reale, probabilità stimata, ritorno lordo e Delta (EV). Il delta è il valore atteso già calcolato dal backend (`probabilità × quota − 1`), in percentuale con segno positivo esplicito. Nelle doppie la quota aggregata è «Quota totale simulata», con quote reali visibili sulle singole selezioni. Partite, esiti, linee, periodi, kickoff e occhio restano disponibili; utile obiettivo, utile netto, motivazione e aggiornamento della quota non sono ripetuti nei riquadri. La semplificazione non cambia API, selezione, calcoli, dati salvati o bilancio e non richiede un avanzamento reale.
+
 Contratto di avvio: `POST /api/advance-job`, risposta 202 con stato del job. Corpo JSON:
 
 ```json
