@@ -1,6 +1,6 @@
 # Inventario funzionale MasterBet
 
-Ultimo aggiornamento: 18 ottobre 2026 — filtro per step e totali dei record visualizzati nel bilancio; barra centrale per il job di avanzamento.
+Ultimo aggiornamento: 18 ottobre 2026 — riconciliazione degli orari NFF/OddsPapi e ripresa dei download su limiti temporanei del provider.
 
 ## Funzionalità implementate
 
@@ -10,6 +10,7 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 
 - Scenario iniziale conservato: Eliteserien 2026, taglio 29 aprile ore 12 UTC, 47 incontri conclusi, 8 target della settima giornata, 1.998 quote.
 - Avanzamento reale eseguito allo step 8: taglio **6 maggio 2026 ore 12 UTC**, 57 incontri conclusi, 6 target fra 8 e 10 maggio, **1.787 quote**. Due incontri dell'ottava giornata rinviati al 20 maggio restano fuori dalla finestra; nessuna partita o quota inventata.
+- Ultimo avanzamento verificato **step 9 → 10**, taglio **20 maggio 2026 ore 12 UTC**: **71 incontri conclusi**, **11 target**, **2.930 quote** e cinque schedine salvate per ciascuna variante. Il caso Lillestrøm–Kristiansund è riconciliato alle 19:00 locali NFF, conservando l'ID OddsPapi. Modello riaddestrato e pubblicazione completata dal job; nessuna modifica ai tre snapshot e alle tre giornate precedenti.
 - Un solo job dall'interfaccia: congela le scelte precedenti, verifica budget API/cache, scarica calendario, quote storiche e nuovi risultati, valida dati, riaddestra, calcola suggerimenti e schedine, pubblica tutto atomicamente. Download partite, risultati e quote restano componenti distinti.
 - Finestra settimanale ancorata al taglio; salta settimane vuote senza usare risultati futuri. Gli step sono finestre temporali, non sempre corrispondono ai numeri ufficiali di giornata. Copertura limitata a Eliteserien 2026.
 - Stato persistente del job, blocco dei doppi avvii, rifiuto di richieste da uno scenario superato. Dopo interruzione del processo il job orfano viene riconosciuto e si può riprovare riutilizzando la cache. Uno step fallito non sostituisce lo scenario precedente.
@@ -21,6 +22,9 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 - Archivio privato delle risposte originali con hash SHA-256, richiesta senza chiave e data di acquisizione. Controlli di identità, kickoff, periodi, gol, timestamp, completezza delle famiglie di mercati e dati futuri.
 - Secondo tempo = risultato dei 90 minuti meno primo tempo. Supplementari/rigori distinti. Quando gli orari del provider sono incoerenti, disponibilità prudenziale del risultato a kickoff +24 ore, dichiarata come tale.
 - Calendario generale filtrato per le squadre interessate prima di validare le altre proprietà: un evento estraneo malformato non blocca MasterBet; dati errati delle squadre pertinenti restano errori.
+- Riconciliazione NFF/OddsPapi per Eliteserien 2026: stessa coppia casa/trasferta, stessa data in Europe/Oslo, campionato e stagione verificati, differenza massima di due ore e corrispondenza unica in entrambe le fonti. Per i nuovi target e risultati vale l'orario ufficiale NFF; gli ID OddsPapi per le quote, gli archivi originali e gli snapshot precedenti restano invariati. Ambiguità, eventi mancanti o differenze fuori limite restano errori espliciti.
+- Finestra dei target selezionata sul calendario ufficiale, anche quando un orario discordante del provider attraversa il confine dello step. La disponibilità prudenziale dei nuovi risultati segue l'orario ufficiale +24 ore quando i timestamp reali non sono affidabili; nessun risultato del calendario entra nel modello. La consultazione di schedine legacy usa il referto ufficiale senza riscriverle.
+- Trasporto OddsPapi separato da budget e archivio: tre tentativi al massimo per limiti temporanei riconosciuti, attesa secondo `retryMs` / `Retry-After`, massimo 30 secondi per singola attesa. Ritmo minimo misurato dalla fine della risposta precedente. Errori di rete e HTTP 502/503/504 ritentati soltanto sugli endpoint gratuiti account/quote storiche, evitando addebiti ripetuti incerti. Quota mensile esaurita, credenziali errate e problemi TLS non vengono aggirati né ritentati. Diagnostica nei log senza chiavi o URL autenticati.
 
 ### Modello e statistiche
 
@@ -56,14 +60,15 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 
 ## Verifiche eseguite
 
-- 78 test JUnit 5, inclusi persistenza/API su H2 isolato, selezione, capitale, liquidazione per periodo, arrotondamenti, ricalcolo delle due varianti, archivio originale, rollback, idempotenza, isolamento dei risultati e download dell'occhio concorrente al ricalcolo.
+- 92 test JUnit 5, inclusi persistenza/API su H2 isolato, selezione, capitale, liquidazione per periodo, arrotondamenti, ricalcolo delle due varianti, archivio originale, rollback, idempotenza, isolamento dei risultati e download dell'occhio concorrente al ricalcolo. Aggiunti il caso reale dei 30 minuti di differenza, confini temporali, giorni/competizioni/stagioni errati, associazioni ambigue o duplicate, due avanzamenti consecutivi, esiti legacy e test HTTP di attese, limiti, rete, TLS, cancellazione e assenza di segreti negli errori.
 - 33 test Angular/Vitest e build di produzione, inclusi unità come utile netto, assenza del limite, invio dei parametri aggiornati, ordinamento EV, job, salvataggio, linee/periodi e apertura esiti/errori/cambio modello. Coperti anche filtro/reset per step, somme sui soli record visibili, ritorni nulli esclusi e ritorni zero delle perdite conservati, centesimi, netto negativo, storico vuoto, cambio dei dati del modello (reset se lo step selezionato non è più disponibile) e ciclo di vita della barra centrale.
 - Avanzamento reale 7 → 8, ripresa da cache dopo un errore su un evento estraneo, addestramento e pubblicazione PostgreSQL.
 - Audit indipendente di 171 risposte OddsPapi, 139 punteggi usati, tutte le 1.787 quote e statistiche/API delle 16 squadre. Riscontro NFF dei 47 risultati originari e dei 10 nuovi referti.
 - Audit indipendente delle 22 selezioni dei due step e delle due varianti: probabilità ricalcolate da pesi/caratteristiche, prezzi, puntate a utile netto obiettivo, ritorni, capitali di apertura, ROI e drawdown. Verificati tutti i sette esiti consultati contro NFF e gli originali archiviati. Snapshot completi, modelli e stato del job confrontati con il backup: invariati.
 - Browser reale: cinque proposte con importi aggiornati, campo utile obiettivo, rimozione del limite, consultazione del netto ricalcolato e del risultato già salvato. Ordinamento EV già verificato nello sviluppo precedente, invariato.
-- Browser reale per il nuovo bilancio: nove record conclusi degli step 7–8, totale puntato 36,80 €, ritorno 49,20 €, netto 12,40 €. Filtro step 8: cinque record, 20,09 € / 27,20 € / 7,11 €. Verifica di sola lettura sui dati locali presenti; nessun job reale avviato da questo sviluppo. Stati del job simulati esclusivamente nei test automatici; API, persistenza e assenza di modalità mock applicativa invariati.
-- Contatore OddsPapi verificato il 18 ottobre: **241/250**, 9 richieste residue. Questo avanzamento ha usato 2 richieste fatturate. Consultazione delle schedine salvate ed esiti NFF non consumano richieste OddsPapi.
+- Browser reale durante il precedente sviluppo dei filtri: nove record conclusi degli step 7–8, totale puntato 36,80 €, ritorno 49,20 €, netto 12,40 €. Filtro step 8: cinque record, 20,09 € / 27,20 € / 7,11 €. Quella verifica era di sola lettura; il job reale e la barra centrale sono stati verificati successivamente con l'avanzamento 9 → 10 descritto sotto.
+- Correzione NFF e prova reale: job `SUCCEEDED` allo step 10, barra centrale visibile durante il download e chiusa al completamento. Superati entrambi gli audit indipendenti: 192 risposte originali, 153 punteggi, tutte le 2.930 quote, 16 squadre e 46 selezioni dei quattro step/due modelli; importi, bilanci e 12 esiti consultati verificati. Controllo separato degli 11 target contro il calendario NFF e dei payload precedenti contro il backup: tre snapshot, tre giornate e tutti gli esiti/revisioni preesistenti conservati.
+- Contatore della chiave attualmente configurata verificato il 18 ottobre dopo lo step 10: **1/250**, 249 richieste residue. Lo step 9 → 10 ha usato una richiesta fatturata per il calendario di contesto; calendario stagione e download precedenti riutilizzati dalla cache. Le quote storiche e gli esiti NFF non hanno incrementato il contatore verificato. La precedente verifica dello step 8 era 241/250 sulla configurazione allora in uso.
 - Test delle due console e della loro terminazione indipendente già verificati nello sviluppo del launcher, invariato in questa modifica.
 
 ## Limiti
@@ -75,9 +80,11 @@ Applicazione locale Angular 22 / Bootstrap e Java 25 / Spring Boot 4.1, PostgreS
 - Quote storiche al taglio, ma calendari e metadati ricevuti oggi: non sono un archivio certificato delle modifiche note allora. Punteggi sul campo distinti da decisioni amministrative successive.
 - Nessuna scelta libera di stagione/campionato, aggiornamento live, invio di puntate, autenticazione multiutente o deploy pubblico. Avanzamenti subordinati a quota gratuita, copertura e controlli: nessun nuovo account o piano a pagamento automatico.
 - L'archivio locale non è versionato; un clone richiede importazione o trasferimento privato della cache. Fonti, HTML NFF e limiti del piano possono cambiare.
+- La riconciliazione non risolve automaticamente rinvii su date diverse, scarti maggiori di due ore, identità ambigue o dati realmente mancanti. Errori persistenti del provider e quota esaurita possono ancora fermare uno step, conservando l'ultimo scenario valido; nessun avanzamento fittizio o modifica automatica di chiave/piano.
 
 ## Registro delle modifiche
 
+- 18 ottobre 2026: riconciliazione controllata NFF/OddsPapi, selezione della finestra sugli orari ufficiali, gestione dei risultati e degli esiti legacy, trasporto HTTP con attese e ripetizioni limitate per errori temporanei. Avanzamento reale autorizzato 9 → 10 completato dopo ripresa da cache; backup privato prima dell'operazione, audit superati e dati precedenti conservati. Nessuna variazione del contratto API, delle migrazioni o della configurazione privata.
 - 18 ottobre 2026: filtro per step nel bilancio, esclusione delle schedine in attesa e totali puntato/ritorno/netto dei soli record visualizzati; barra centrale durante il job con messaggio della fase. Nessuna modifica ai contratti API o ai dati salvati; nessun avanzamento reale eseguito per verificare la barra.
 - 18 ottobre 2026: unità come utile netto obiettivo per schedina, rimosso limite per step, ricalcolo autorizzato di storico/proposte/esiti con archivio originale, nessun avanzamento oltre lo step 8. Capitale al taglio 505,29 €, disponibile 485,20 €, impegnato 20,09 € per entrambe le varianti.
 - 18 ottobre 2026: job unico di avanzamento, riaddestramento, bilanci, EV ordinabile, cinque schedine persistite ed occhio con referti verificati e archivio separato. Avanzato e verificato lo step 8; originali conservati.

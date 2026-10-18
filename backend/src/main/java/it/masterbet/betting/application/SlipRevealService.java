@@ -57,6 +57,13 @@ public class SlipRevealService {
         continue;
       }
       var match = calendar.identify(target, calendar.load());
+      var availableAt = match.kickoff().plusSeconds(86400);
+      if (availableAt.isBefore(target.kickoff().plusSeconds(86400)))
+        availableAt = target.kickoff().plusSeconds(86400);
+      if (availableAt.isAfter(now)) {
+        results.add(new SlipReveal.Result(leg, null, null, "Risultato non ancora disponibile"));
+        continue;
+      }
       var historical =
           new Fixture(
               target.id(),
@@ -67,8 +74,8 @@ public class SlipRevealService {
               target.tournamentId(),
               target.competition(),
               target.seasonId(),
-              target.kickoff(),
-              target.kickoff().plusSeconds(86400),
+              match.kickoff(),
+              availableAt,
               "REVEAL_ONLY_CONSERVATIVE_24H");
       var score = scores.download(historical, match, now);
       results.add(

@@ -62,37 +62,7 @@ public class NextStepDownloader {
         fixtures.tournament(20, seasonFrom, seasonTo).stream()
             .filter(f -> Objects.equals(f.seasonId(), 138092L))
             .toList();
-    var targetSource =
-        season.stream()
-            .filter(f -> f.kickoff().isAfter(cutoff) && f.kickoff().isBefore(end))
-            .toList();
-    var expected =
-        schedule.stream()
-            .filter(m -> m.kickoff().isAfter(cutoff) && m.kickoff().isBefore(end))
-            .toList();
-    var targetIds = new HashSet<String>();
-    for (var f : targetSource) targetIds.add(official.identify(f, schedule).nffId());
-    if (targetIds.isEmpty()
-        || !targetIds.equals(
-            new HashSet<>(expected.stream().map(NffSchedule.Match::nffId).toList())))
-      throw new IllegalArgumentException(
-          "Calendario futuro incompleto o settimana senza partite; nessuno scenario pubblicato");
-    var targets =
-        targetSource.stream()
-            .map(
-                f ->
-                    new Fixture(
-                        f.id(),
-                        f.homeId(),
-                        f.awayId(),
-                        f.home(),
-                        f.away(),
-                        f.tournamentId(),
-                        f.competition(),
-                        f.seasonId(),
-                        f.kickoff(),
-                        null))
-            .toList();
+    var targets = official.targets(season, schedule, cutoff, end);
     progress.accept("Download quote storiche al nuovo taglio, prima dei risultati");
     List<QuotedOutcome> quotes = new ArrayList<>();
     for (var f : targets)
@@ -100,21 +70,26 @@ public class NextStepDownloader {
     Map<String, PlayedMatch> history = new TreeMap<>();
     old.leagueHistory().forEach(m -> history.put(m.fixture().id(), m));
     progress.accept("Download referti ufficiali: primo tempo e finale");
-    for (var f : season)
-      if (f.finishedBefore(cutoff) && !history.containsKey(f.id()))
+    for (var providerFixture : season) {
+      if (history.containsKey(providerFixture.id())
+          || providerFixture.endedAt() == null
+          || providerFixture.kickoff().isAfter(cutoff.plus(NffSchedule.MAX_TIME_DIFFERENCE)))
+        continue;
+      var f = official.reconcile(providerFixture, schedule);
+      if (f.finishedBefore(cutoff))
         history.put(
             f.id(), new PlayedMatch(f, scores.download(f, official.identify(f, schedule), cutoff)));
+    }
+    Set<String> historicalIds = new HashSet<>();
+    for (var played : history.values())
+      if (!historicalIds.add(official.identify(played.fixture(), schedule).nffId()))
+        throw new IllegalArgumentException("Risultato duplicato per la stessa partita NFF");
     var expectedHistory =
         schedule.stream()
             .filter(m -> !m.kickoff().plus(Duration.ofDays(1)).isAfter(cutoff))
             .toList();
     for (var m : expectedHistory)
-      if (history.values().stream()
-          .noneMatch(
-              p ->
-                  p.fixture().kickoff().equals(m.kickoff())
-                      && NffSchedule.alias(p.fixture().home()).equals(m.home())
-                      && NffSchedule.alias(p.fixture().away()).equals(m.away())))
+      if (!historicalIds.contains(m.nffId()))
         throw new IllegalArgumentException(
             "Risultato storico mancante nel provider: NFF " + m.nffId());
     for (var f : old.targets())

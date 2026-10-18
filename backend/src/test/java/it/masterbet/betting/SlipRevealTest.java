@@ -16,6 +16,15 @@ import org.junit.jupiter.api.Test;
 class SlipRevealTest {
   @Test
   void revealUsesExactPeriodsAndSeparateStorageWithoutChangingSnapshot() {
+    checkReveal(0);
+  }
+
+  @Test
+  void legacyRevealUsesOfficialTimeWithoutRewritingTheSavedSlip() {
+    checkReveal(-1800);
+  }
+
+  private void checkReveal(long officialTimeShift) {
     var helper = new BettingTest();
     var source = helper.snapshot(List.of(helper.prediction("f")));
     var slips =
@@ -43,7 +52,8 @@ class SlipRevealTest {
     when(repo.save(any())).thenAnswer(call -> call.getArgument(0));
     when(snapshots.find("step")).thenReturn(Optional.of(source));
     var target = source.dataset().targets().getFirst();
-    var match = new NffSchedule.Match("123", 8, target.kickoff(), "A", "B");
+    var match =
+        new NffSchedule.Match("123", 8, target.kickoff().plusSeconds(officialTimeShift), "A", "B");
     when(calendar.load()).thenReturn(List.of(match));
     when(calendar.identify(eq(target), any())).thenReturn(match);
     when(scores.download(any(), eq(match), any())).thenReturn(new Score("f", 1, 0, 1, 2, false));
@@ -58,6 +68,14 @@ class SlipRevealTest {
     assertTrue(source.dataset().leagueHistory().isEmpty());
     assertNull(target.endedAt());
     verify(snapshots, never()).save(any());
+    verify(scores)
+        .download(
+            argThat(
+                f ->
+                    f.kickoff().equals(match.kickoff())
+                        && !f.endedAt().isBefore(target.kickoff().plusSeconds(86400))),
+            eq(match),
+            any());
     var order = inOrder(workspace, scores, repo);
     order.verify(workspace).claimReveal("step", "cups", "S1");
     order.verify(scores).download(any(), eq(match), any());
