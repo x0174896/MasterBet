@@ -71,6 +71,8 @@ class LabIntegrationTest {
     for (String table :
         List.of(
             "lab_process_lock",
+            "lab_campaign_stage",
+            "lab_fixture_alignment",
             "lab_download_checkpoint",
             "lab_spoiler",
             "lab_bet",
@@ -111,6 +113,124 @@ class LabIntegrationTest {
       jobs.await(quotes.id());
     }
     assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM lab_process_lock", Integer.class));
+  }
+
+  @Test
+  void campaignOwnsItsPhasesAndRejectsUnrelatedMutations() throws Exception {
+    var jobs = context.getBean(LabJobs.class);
+    var entered = new java.util.concurrent.CountDownLatch(1);
+    var release = new java.util.concurrent.CountDownLatch(1);
+    var campaign =
+        jobs.start(
+            "campaign",
+            parent -> {
+              var child =
+                  jobs.phase(
+                      "results",
+                      p -> {
+                        entered.countDown();
+                        try {
+                          if (!release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                            throw new IllegalStateException("Timeout");
+                        } catch (InterruptedException e) {
+                          Thread.currentThread().interrupt();
+                          throw new IllegalStateException(e);
+                        }
+                        p.warning("Calendario vuoto");
+                      },
+                      parent.id());
+              assertEquals("PARTIAL", child.status());
+              assertEquals(0, jobs.technicalErrors(child.id()));
+            });
+    try {
+      assertTrue(entered.await(2, java.util.concurrent.TimeUnit.SECONDS));
+      assertThrows(IllegalStateException.class, () -> jobs.start("quotes", p -> {}));
+      assertThrows(IllegalStateException.class, () -> jobs.start("calculate", p -> {}));
+      assertThrows(IllegalStateException.class, () -> jobs.phase("quotes", p -> {}, "wrong-owner"));
+    } finally {
+      release.countDown();
+    }
+    assertEquals("SUCCEEDED", jobs.await(campaign.id()).status());
+    assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM lab_process_lock", Integer.class));
+  }
+
+  @Test
+  void incompleteQuoteImportBlocksValidationAndTechnicalErrorsArePersistedAtomically() {
+    var jobs = context.getBean(LabJobs.class);
+    var failed = jobs.blocking("results", p -> p.error("technical failure"));
+    assertEquals("PARTIAL", failed.status());
+    assertEquals(1, jobs.technicalErrors(failed.id()));
+    repo.save(
+        new LabCompetition(
+            384, "serie-a", "Serie A", "Italia", false, List.of("2026"), 1, "COMUNE"));
+    repo.save(LabData.match("a", 384, "2026", kickoff, 1, 2, 1, 2, false).linked("provider"));
+    repo.save(quote("a"));
+    var check = context.getBean(LabDataValidation.class);
+    var config =
+        new LabRunConfig(
+            LocalDate.of(2026, 1, 1), LocalDate.of(2026, 4, 1), List.of(), null, "HISTORICAL");
+    context.getBean(LabDownloadCheckpoints.class).save("provider", List.of("unibet"), "DOWNLOADED");
+    assertThrows(IllegalStateException.class, () -> check.verify(config));
+    context.getBean(LabDownloadCheckpoints.class).save("provider", List.of("unibet"), "IMPORTED");
+    assertThrows(IllegalStateException.class, () -> check.verify(config));
+    jobs.blocking("results", p -> {});
+    assertEquals(List.of(384), check.verify(config).eligible());
+  }
+
+  @Test
+  void explicitAlignmentMigratesParkedQuotesAtomicallyAndArchivesTheirSource() {
+    var official = LabData.match("calcio:official", 384, "2026", kickoff, 1, 2, 1, 2, false);
+    var provider =
+        new it.masterbet.football.domain.Fixture(
+            "provider",
+            10,
+            20,
+            "Other spelling",
+            "Team 2",
+            17,
+            "Provider league",
+            2026L,
+            kickoff,
+            null);
+    var stub =
+        new LabMatch(
+            new it.masterbet.football.domain.Fixture(
+                "odds:provider",
+                10,
+                20,
+                provider.home(),
+                provider.away(),
+                384,
+                "Serie A",
+                2026L,
+                kickoff,
+                null),
+            "ODDSPAPI:2026",
+            "",
+            false,
+            null,
+            "provider",
+            "provider",
+            "hash");
+    repo.save(official);
+    repo.save(stub);
+    repo.save(quote(stub.fixture().id()));
+    repo.link(official, provider, List.of("verified opponent on two dates"));
+    assertTrue(repo.match("odds:provider").isEmpty());
+    assertEquals(official.score(), repo.match("calcio:official").orElseThrow().score());
+    assertEquals("provider", repo.match("calcio:official").orElseThrow().oddsFixtureId());
+    assertEquals(1, repo.quotes("calcio:official").size());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM lab_revision WHERE entity_type='quote-source'", Integer.class));
+    assertEquals(
+        1, jdbc.queryForObject("SELECT COUNT(*) FROM lab_fixture_alignment", Integer.class));
+    repo.link(
+        repo.match("calcio:official").orElseThrow(),
+        provider,
+        List.of("verified opponent on two dates"));
+    assertEquals(1, repo.quotes("calcio:official").size());
   }
 
   @Test
@@ -260,7 +380,7 @@ class LabIntegrationTest {
               league,
               "COMUNE"));
       for (var m : LabData.season(league, "2026", start, 21)) {
-        repo.save(m);
+        repo.save(m.linked("provider-" + m.fixture().id()));
         repo.save(quote(m.fixture().id()));
       }
     }
@@ -329,6 +449,7 @@ class LabIntegrationTest {
             .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
             .build();
     assertEquals(401, send(client, "/admin/jobs", "GET", null, false).statusCode());
+    assertEquals(401, send(client, "/admin/campaign", "POST", "{}", true).statusCode());
     var foreignOrigin =
         HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/lab/admin/login"))
             .header("Content-Type", "application/json")
@@ -360,6 +481,7 @@ class LabIntegrationTest {
     assertFalse(login.body().contains("password"));
     assertTrue(login.headers().firstValue("Set-Cookie").orElseThrow().contains("HttpOnly"));
     assertEquals(200, send(client, "/admin/jobs", "GET", null, false).statusCode());
+    assertEquals(400, send(client, "/admin/campaign", "POST", "{}", true).statusCode());
     assertEquals(403, send(client, "/admin/calculate", "POST", "{}", false).statusCode());
     assertEquals(200, send(client, "/admin/logout", "POST", "{}", true).statusCode());
     assertEquals(401, send(client, "/admin/jobs", "GET", null, false).statusCode());

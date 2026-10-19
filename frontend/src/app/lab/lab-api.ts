@@ -79,4 +79,22 @@ export class LabApi {
       headers: { 'X-MasterBet-Admin': '1' },
     });
   }
+  campaign(
+    download: {
+      from: string;
+      to: string;
+      competitionIds: number[];
+      bookmakers: string[];
+      refresh: boolean;
+    },
+    unitProfit: number,
+  ) {
+    return this.http.post<Job>(
+      '/api/lab/admin/campaign',
+      { download, unitProfit },
+      {
+        headers: { 'X-MasterBet-Admin': '1' },
+      },
+    );
+  }
 }

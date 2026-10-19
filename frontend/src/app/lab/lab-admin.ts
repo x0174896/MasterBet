@@ -20,6 +20,7 @@ export class LabAdmin {
   readonly error = signal('');
   readonly notice = signal('');
   readonly busy = signal(false);
+  readonly jobRunning = (job: Job) => job.status === 'RUNNING';
   password = '';
   confirmation = '';
   from = '2026-01-01';
@@ -91,7 +92,7 @@ export class LabAdmin {
       },
     });
   }
-  start(kind: 'catalog' | 'results' | 'quotes' | 'calculate') {
+  start(kind: 'catalog' | 'results' | 'quotes' | 'calculate' | 'campaign') {
     this.error.set('');
     this.notice.set('');
     this.busy.set(true);
@@ -106,17 +107,19 @@ export class LabAdmin {
       refresh: this.refresh,
     };
     const request =
-      kind === 'catalog'
-        ? this.api.catalog(this.refresh)
-        : kind === 'calculate'
-          ? this.api.calculate({
-              from: this.from,
-              to: this.to,
-              competitionIds: body.competitionIds,
-              unitProfit: this.unitProfit,
-              mode: this.mode,
-            })
-          : this.api.download(kind, body);
+      kind === 'campaign'
+        ? this.api.campaign(body, this.unitProfit)
+        : kind === 'catalog'
+          ? this.api.catalog(this.refresh)
+          : kind === 'calculate'
+            ? this.api.calculate({
+                from: this.from,
+                to: this.to,
+                competitionIds: body.competitionIds,
+                unitProfit: this.unitProfit,
+                mode: this.mode,
+              })
+            : this.api.download(kind, body);
     request.subscribe({
       next: () => {
         this.busy.set(false);
@@ -133,5 +136,17 @@ export class LabAdmin {
   }
   running(kind: string) {
     return this.jobs().some((j) => j.kind === kind && j.status === 'RUNNING');
+  }
+  jobLabel(kind: string) {
+    const labels: Record<string, string> = {
+      campaign: 'Campagna automatica',
+      results: 'Risultati',
+      quotes: 'Quote',
+      reconcile: 'Abbinamenti',
+      validate: 'Controlli finali',
+      calculate: 'Elaborazione',
+      catalog: 'Catalogo',
+    };
+    return labels[kind] ?? kind;
   }
 }

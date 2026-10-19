@@ -38,6 +38,10 @@ Operativo separato: tempo reale, prossimi sette giorni, nessun rewind/invio punt
 
 ## Campagna e accesso
 
-Due job distinti importano tutti i campionati comuni della stagione pertinente; terminati i download, il comando di campagna calcola entrambe le modalità e tutte le settimane. I 404 delle quote sono checkpoint per evento/bookmaker, ricontrollabili con aggiornamento forzato. Credenziali errate, quota esaurita e problemi persistenti interrompono il flusso senza aggiramenti.
+I download singoli restano indipendenti. La campagna li coordina in sei fasi sequenziali: risultati, abbinamenti, completamento quote, riconciliazione finale, controlli, calcolo. Le fasi di importazione completate si riutilizzano per la stessa configurazione; i controlli si ripetono. Errori tecnici impediscono il calcolo. I 404 delle quote sono checkpoint per evento/bookmaker, ricontrollabili con aggiornamento forzato. Credenziali errate, quota esaurita e problemi persistenti interrompono il flusso senza aggiramenti.
+
+Le corrispondenze sconosciute possono essere ricavate solo da almeno due incontri in date differenti con avversari diversi già riconosciuti, nello stesso campionato/stagione e con associazione uno-a-uno. Nessuna similarità dei nomi o risultato della partita partecipa alla decisione. Prove e versioni sono conservate, l'unione delle quote provvisorie è transazionale. Campionati privi di risultati HT/FT o di quote effettivamente abbinate sono esclusi anche dall'addestramento; incontri dubbi restano in archivio senza proposte forzate.
+
+Se la fonte non espone giornate numerate viene verificato il calendario senza `roundId`. Questo recupera la MLS 2026. Canadian Soccer League 2026 è vuota anche da questo percorso, quindi indisponibile per il test verificato; nessun risultato è ricostruito o sostituito.
 
 [Calendari OddsPapi](https://oddspapi.io/en/docs/get-fixtures): intervalli estesi per torneo. [Quote storiche](https://oddspapi.io/en/docs/get-historical-odds): storico da gennaio 2026, attesa minima cinque secondi. Non garantiscono dati per ogni incontro: lacune riscontrate realmente. Nessun piano a pagamento, nuovo account o download dei risultati gol OddsPapi è avviato dal laboratorio.

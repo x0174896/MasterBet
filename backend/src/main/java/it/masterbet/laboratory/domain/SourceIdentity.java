@@ -173,18 +173,48 @@ public final class SourceIdentity {
           Map.entry("man city".replace(" ", ""), "manchestercity"),
           Map.entry("tottenhamhotspur", "tottenham"),
           Map.entry("leytonorientlondon", "leytonorient"),
+          Map.entry("ajaxamsterdam", "ajax"),
+          Map.entry("jongajaxamsterdam", "jongajax"),
+          Map.entry("azalkmaar", "az"),
+          Map.entry("jongazalkmaar", "jongaz"),
+          Map.entry("psveindhoven", "psv"),
+          Map.entry("jongpsveindhoven", "jongpsv"),
+          Map.entry("feyenoordrotterdam", "feyenoord"),
+          Map.entry("twenteenschede", "twente"),
+          Map.entry("excelsiorrotterdam", "excelsior"),
+          Map.entry("sctelstar", "telstar"),
+          Map.entry("vitessearnhem", "vitesse"),
+          Map.entry("willemiitilburg", "willemii"),
+          Map.entry("bayer04leverkusen", "bayerleverkusen"),
+          Map.entry("1cologne", "koln"),
+          Map.entry("fsvmainz05", "fsvmainz"),
+          Map.entry("1heidenheim", "heidenheim"),
+          Map.entry("1nuremberg", "nurnberg"),
+          Map.entry("1kaiserslautern", "kaiserslautern"),
+          Map.entry("1magdeburg", "magdeburg"),
+          Map.entry("svdarmstadt98", "darmstadt98"),
+          Map.entry("spvgggreutherfurth", "greutherfurth"),
+          Map.entry("vflbochum1848", "vflbochum"),
+          Map.entry("dscarminiabielefeld", "arminiabielefeld"),
+          Map.entry("scpreussen06munster", "preussenmunster"),
+          Map.entry("scpaderborn07", "paderborn"),
+          Map.entry("brightonhovealbion", "brighton"),
+          Map.entry("leicestercity", "leicester"),
+          Map.entry("westhamunited", "westham"),
           Map.entry("atleticomadrid", "atleticomadrid"),
           Map.entry("athleticbilbao", "athleticclub"),
           Map.entry("sportinglisbon", "sportingcp"),
           Map.entry("sporting", "sportingcp"));
 
   public static String team(String value) {
+    boolean women = value.toLowerCase(Locale.ROOT).matches(".*\\b(wfc|women|w)\\)?\\s*$");
+    if (women) value = value.replaceAll("(?i)\\b(wfc|women|w)\\)?\\s*$", "");
     String n =
         Normalizer.normalize(value, Normalizer.Form.NFD)
             .replaceAll("\\p{M}", "")
             .toLowerCase(Locale.ROOT)
             .replaceAll("\\b(fc|fk|bk|sk|afc|cf|ac|as|ssc|if|ik)\\b", "");
     n = normalized(n);
-    return TEAMS.getOrDefault(n, n);
+    return n.isBlank() ? "" : (women ? "women:" : "") + TEAMS.getOrDefault(n, n);
   }
 }

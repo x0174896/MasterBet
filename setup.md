@@ -87,7 +87,7 @@ La verifica TLS resta attiva. Per l'importazione Java usare gli stessi due param
 
 ## Laboratorio multicampionato corrente
 
-Flyway V5–V9 aggiunge archivio competizioni/partite/quote/revisioni, job/checkpoint, lock di avvio, elaborazioni/step/proposte e spoiler. V1–V4 e i dati sorgenti precedenti restano conservati. Nessuna dipendenza applicativa aggiunta. Il formatter Google Java Format 1.37.0 è stato usato solo come strumento temporaneo locale, non è necessario per avvio/build.
+Flyway V5–V10 aggiunge archivio competizioni/partite/quote/revisioni, job/checkpoint, lock di avvio, elaborazioni/step/proposte e spoiler. V10 aggiunge `lab_campaign_stage`, `lab_fixture_alignment` e proprietà/errori tecnici dei job. V1–V4 e i dati sorgenti precedenti restano conservati. Nessuna dipendenza applicativa aggiunta. Il formatter Google Java Format 1.37.0 è stato usato solo come strumento temporaneo locale, non è necessario per avvio/build.
 
 Aprire `/admin` nel frontend: prima password locale scelta dall'utente (almeno 12 caratteri), poi sessione HttpOnly/SameSite Strict di otto ore. Salt e hash PBKDF2-HMAC-SHA256 (310.000 iterazioni) in `.local/data/private/admin-credential.json`, mai password in chiaro o Git. Sessioni in memoria: dopo riavvio si accede di nuovo. Nessun account o chiave nuova presso fornitori.
 
@@ -105,7 +105,13 @@ java -jar target/masterbet-backend-0.1.0.jar --lab-action=calculate --lab-from=2
 java -jar target/masterbet-backend-0.1.0.jar --lab-action=campaign --lab-from=2026-01-01 --lab-to=2026-10-18 --server.port=0
 ```
 
-Opzionali: `--lab-competitions=384,82` (ID Calcio, non OddsPapi), `--lab-refresh` per ricaricare le sorgenti. `campaign` avvia due job distinti e calcola successivamente; non avviarlo mentre sono attivi altri download dello stesso tipo. Processi e avanzamento sono persistiti e visibili nell'admin, anche se avviati da CLI. Dopo crash/riavvio, ripetere il download per usare la cache: non esiste un servizio di riavvio automatico del PC. Un calcolo interrotto conserva gli step e si ripete come nuova elaborazione.
+Opzionali: `--lab-competitions=384,82` (ID Calcio, non OddsPapi), `--lab-refresh` per ricaricare le sorgenti. `campaign` esegue in sequenza risultati, riconciliazione, quote, riconciliazione finale, controlli, calcolo; riserva il flusso durante tutte le fasi. Non avviarlo mentre sono attivi altri job. L'admin offre lo stesso comando «Campagna automatica» con periodo, campionati, bookmaker e utile netto scelti. I comandi singoli restano disponibili fuori dalla campagna.
+
+Processi e avanzamento sono persistiti e visibili nell'admin anche da CLI. Le fasi risultati/quote/riconciliazione iniziale completate vengono riutilizzate ripetendo la stessa configurazione senza `--lab-refresh`; una fase incompleta riparte usando cache e checkpoint degli incontri. Riconciliazione finale, controlli e calcolo si ripetono. Errori tecnici bloccano le fasi successive; lacune previste sono avvisi `GAP:`. Campionati senza HT/FT o senza quote abbinate non entrano nel modello. Anche il comando di calcolo singolo verifica le ultime fasi sorgenti e gli import quote incompleti.
+
+MLS: se `schedule-rounds` è vuoto si usa il calendario gratuito senza `roundId`; non è una giornata artificiale. Canadian Soccer League 2026 è risultata vuota anche da questo percorso: resta segnalata ed esclusa. Le identità sono verificate per campionato/stagione; associazioni inferite richiedono due date e due avversari verificati, senza confronti approssimativi dei nomi. Le prove vengono salvate, gli originali delle quote provvisorie archiviati e il trasferimento è transazionale. Non cancellare raw, quote o checkpoint per recuperare un abbinamento.
+
+Dopo crash/riavvio ripetere il comando di campagna: non esiste un servizio di riavvio automatico del PC. Un calcolo interrotto conserva gli step e si ripete come nuova elaborazione. Finché il processo resta attivo, i passaggi fra le fasi avvengono senza intervento dell'utente.
 
 Backup/reset legacy: dalla radice eseguire `scripts/backup-lab.ps1` sul solo DB locale documentato; il dump custom viene verificato con `pg_restore --list` e SHA-256. Poi da backend `java -jar target/masterbet-backend-0.1.0.jar --lab-action=reset-legacy --server.port=0`. Il reset verifica nuovamente manifest/hash, archivia e rimuove solo le righe delle vecchie schedine, senza cancellare sorgenti/snapshot/modelli. Non è un reset completo del laboratorio.
 
@@ -125,6 +131,7 @@ Backup/reset legacy: dalla radice eseguire `scripts/backup-lab.ps1` sul solo DB 
 | `POST /api/lab/admin/catalog?refresh=false` | Job del catalogo |
 | `POST /api/lab/admin/results` / `quotes` | `{competitionIds:[],from,to,bookmakers:[...],refresh:false}`; vuoto=tutti i campionati comuni pertinenti; date da gennaio 2026, download fino a oggi+14 giorni |
 | `POST /api/lab/admin/calculate` | `{from,to,competitionIds:[],unitProfit:5,mode:"HISTORICAL"}` oppure `OPERATIONAL`; storico fino a oggi, operativo dal tempo reale per sette giorni |
+| `POST /api/lab/admin/campaign` | `{download:{from,to,competitionIds:[],bookmakers:[...],refresh:false},unitProfit:5}`; campagna storica sequenziale, risposta job `campaign`; fasi `results`, `reconcile`, `quotes`, `reconcile`, `validate`, `calculate` |
 | `POST /api/lab/admin/reset-legacy` | Richiede backup verificato, restituisce numero righe archiviate |
 
 Tutte le scritture `/admin` richiedono `X-MasterBet-Admin: 1`. Serve anche la sessione, tranne login e logout; logout revoca quella presente. Origine browser locale e corrispondente all'Host, nessuna policy CORS aperta. Errori ProblemDetail: 400 richiesta, 401 accesso, 403 origine/intestazione, 404 risorsa, 409 processi incompatibili, 429 tentativi accesso; errori interni senza dettagli privati. Nessuna chiave API restituita al browser.
