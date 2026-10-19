@@ -207,6 +207,7 @@ public final class SourceIdentity {
           Map.entry("sporting", "sportingcp"));
 
   public static String team(String value) {
+    value = value == null ? "" : value;
     boolean women = value.toLowerCase(Locale.ROOT).matches(".*\\b(wfc|women|w)\\)?\\s*$");
     if (women) value = value.replaceAll("(?i)\\b(wfc|women|w)\\)?\\s*$", "");
     String n =
@@ -216,5 +217,78 @@ public final class SourceIdentity {
             .replaceAll("\\b(fc|fk|bk|sk|afc|cf|ac|as|ssc|if|ik)\\b", "");
     n = normalized(n);
     return n.isBlank() ? "" : (women ? "women:" : "") + TEAMS.getOrDefault(n, n);
+  }
+
+  private static final Map<String, String> CROATIAN_TEAMS =
+      Map.ofEntries(
+          Map.entry("slavenbelupo", "slavenkoprivnica"),
+          Map.entry("vukovar1991", "vukovar"),
+          Map.entry("rudeszagreb", "rudes"));
+
+  private static final Map<String, String> BRAZILIAN_TEAMS =
+      Map.ofEntries(
+          Map.entry("atleticomineiromg", "atleticomineiro"),
+          Map.entry("botafogofrrj", "botafogo"),
+          Map.entry("caparanaensepr", "athleticopr"),
+          Map.entry("crflamengorj", "flamengo"),
+          Map.entry("crvascodagamarj", "vascodagama"),
+          Map.entry("chapecoensesc", "chapecoense"),
+          Map.entry("clubedoremopa", "remo"),
+          Map.entry("coritibapr", "coritiba"),
+          Map.entry("cruzeiroecmg", "cruzeiro"),
+          Map.entry("ecbahiaba", "bahia"),
+          Map.entry("ecvitoriaba", "vitoria"),
+          Map.entry("vitoriaba", "vitoria"),
+          Map.entry("fluminenserj", "fluminense"),
+          Map.entry("gremiofbportoalegrensers", "gremio"),
+          Map.entry("mirassolsp", "mirassol"),
+          Map.entry("redbullbragantinosp", "bragantino"),
+          Map.entry("rbbragantino", "bragantino"),
+          Map.entry("sccorinthianssp", "corinthians"),
+          Map.entry("scinternacionalrs", "internacional"),
+          Map.entry("internacionalrs", "internacional"),
+          Map.entry("sepalmeirassp", "palmeiras"),
+          Map.entry("santossp", "santos"),
+          Map.entry("saopaulosp", "saopaulo"),
+          Map.entry("americamg", "americamineiro"),
+          Map.entry("ecjuventuders", "juventude"),
+          Map.entry("ferroviariasp", "ferroviaria"),
+          Map.entry("mixtoecmt", "mixto"));
+
+  private static final Map<String, String> BELGIAN_RESERVE_LEAGUE_TEAMS =
+      Map.ofEntries(
+          Map.entry("royalfrancsborains", "francsborains"),
+          Map.entry("rfcliege", "liege"),
+          Map.entry("kaseupen", "eupen"),
+          Map.entry("kbeerschotva", "beerschot"));
+
+  private static final Set<Integer> WOMEN_LEAGUES = Set.of(45, 1583, 1631);
+
+  private static final Map<String, String> INDIAN_TEAMS =
+      Map.ofEntries(
+          Map.entry("sportingclubdelhi", "sportingdelhi"),
+          Map.entry("mohunbagansupergiant", "atkmohunbagan"),
+          Map.entry("punjab", "minervapunjab"));
+
+  /** Catalog-confirmed competition context; never remove women's identity globally. */
+  public static String team(String value, int calcioCompetitionId) {
+    boolean women = WOMEN_LEAGUES.contains(calcioCompetitionId);
+    if (calcioCompetitionId == 244 && value != null)
+      value = value.replaceFirst("(?i)^\\s*(gnk|hnk|nk)\\s+", "");
+    String name = team(value);
+    if (name.isBlank()) return "";
+    boolean marked = name.startsWith("women:");
+    String core = marked ? name.substring("women:".length()) : name;
+    var aliases =
+        switch (calcioCompetitionId) {
+          case 244 -> CROATIAN_TEAMS;
+          case 648, 1631 -> BRAZILIAN_TEAMS;
+          case 211 -> BELGIAN_RESERVE_LEAGUE_TEAMS;
+          case 603 -> Map.of("ankarakeciorengucu", "keciorengucu");
+          case 1007 -> INDIAN_TEAMS;
+          case 1356 -> Map.of("newcastleunitedjets", "newcastlejets");
+          default -> Map.<String, String>of();
+        };
+    return (women || marked ? "women:" : "") + aliases.getOrDefault(core, core);
   }
 }

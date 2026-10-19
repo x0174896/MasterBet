@@ -137,4 +137,23 @@ class LabCampaignServiceTest {
     campaign.run(request, null).accept(parent);
     assertEquals(List.of("results", "reconcile", "validate", "validate", "calculate"), events);
   }
+
+  @Test
+  void updatedIdentityRulesRecheckAlignmentWhileRetainingCompletedDownloads() {
+    String sourceHash =
+        it.masterbet.ingestion.infrastructure.RawResponseArchive.hash("configuration");
+    when(store.complete(eq(sourceHash), anyString())).thenReturn(true);
+    campaign.run(request, null).accept(parent);
+    assertEquals(List.of("reconcile", "reconcile", "validate", "validate", "calculate"), events);
+    verify(jobs, never()).phase(eq("results"), any(), anyString());
+    verify(jobs, never()).phase(eq("quotes"), any(), anyString());
+    verify(store)
+        .save(
+            eq(
+                it.masterbet.ingestion.infrastructure.RawResponseArchive.hash(
+                    sourceHash + ":" + FixtureIdentityResolver.VERSION)),
+            eq("reconcile"),
+            eq("configuration"),
+            any());
+  }
 }

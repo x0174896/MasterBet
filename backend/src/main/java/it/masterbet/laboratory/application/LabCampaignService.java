@@ -142,9 +142,14 @@ public class LabCampaignService {
       String hash,
       String config,
       boolean reusable) {
+    // Identity rules may change during a resumed import; retain completed source phases.
+    String checkpointHash =
+        kind.equals("reconcile")
+            ? RawResponseArchive.hash(hash + ":" + FixtureIdentityResolver.VERSION)
+            : hash;
     if (reusable
         && !request.refresh()
-        && store.complete(hash, stage)
+        && store.complete(checkpointHash, stage)
         && store.sourceFailures().stream().noneMatch(s -> s.startsWith(kind + ":"))
         && !(stage.equals("quotes") && !store.incompleteQuoteImports().isEmpty())) {
       parent.item("Fase " + stage + " gia completata: archivio e checkpoint riutilizzati");
@@ -159,7 +164,7 @@ public class LabCampaignService {
               + stage
               + " interrotta o con errori tecnici; dati conservati, calcolo bloccato. Job "
               + job.id());
-    store.save(hash, stage, config, job);
+    store.save(checkpointHash, stage, config, job);
     if (!job.errors().isEmpty())
       parent.warning(
           "GAP: fase "

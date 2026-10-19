@@ -13,7 +13,13 @@ class FixtureIdentityResolverTest {
   final Instant at = Instant.parse("2026-03-01T15:00:00Z");
 
   LabMatch official(String id, int day, long h, long a, String hn, String an) {
-    var f = new Fixture(id, h, a, hn, an, 8, "League", 2026L, at.plusSeconds(day * 86400L), null);
+    return official(id, day, h, a, hn, an, 8);
+  }
+
+  LabMatch official(String id, int day, long h, long a, String hn, String an, int competition) {
+    var f =
+        new Fixture(
+            id, h, a, hn, an, competition, "League", 2026L, at.plusSeconds(day * 86400L), null);
     return new LabMatch(f, "2026", "1", false, null, "source", null, "hash");
   }
 
@@ -101,5 +107,84 @@ class FixtureIdentityResolverTest {
                 List.of(provider("p", 0, 10, 20, "@@@", "###")))
             .matches()
             .isEmpty());
+  }
+
+  @Test
+  void croatianClubPrefixesAreRecognizedOnlyInsideTheVerifiedLeague() {
+    var game = official("a", 0, 1, 2, "Istra 1961", "Gorica", 244);
+    var feed = provider("p", 0, 10, 20, "NK Istra 1961", "HNK Gorica");
+    assertEquals("p", resolver.resolve(List.of(game), List.of(feed)).matches().get("a").id());
+    assertTrue(
+        resolver
+            .resolve(List.of(official("a", 0, 1, 2, "Istra 1961", "Gorica")), List.of(feed))
+            .matches()
+            .isEmpty());
+  }
+
+  @Test
+  void brazilianRegionalAliasesResolveFixturesWithoutRemovingRegionalNamesGlobally() {
+    var game = official("a", 0, 1, 2, "São Paulo", "Flamengo", 648);
+    var feed = provider("p", 0, 10, 20, "Sao Paulo FC SP", "CR Flamengo RJ");
+    assertEquals("p", resolver.resolve(List.of(game), List.of(feed)).matches().get("a").id());
+    assertNotEquals(SourceIdentity.team("São Paulo"), SourceIdentity.team("Sao Paulo FC SP"));
+    assertEquals(
+        SourceIdentity.team("Internacional RS W", 1631),
+        SourceIdentity.team("SC Internacional RS", 1631));
+    assertNotEquals(SourceIdentity.team("Santos", 648), SourceIdentity.team("Santos", 1631));
+  }
+
+  @Test
+  void catalogConfirmedWomenLeagueSuppliesGenderOmittedByProviderNames() {
+    var game = official("a", 0, 1, 2, "Sydney W", "Adelaide United W", 1583);
+    var feed = provider("p", 0, 10, 20, "Sydney FC", "Adelaide United FC");
+    assertEquals(1, resolver.resolve(List.of(game), List.of(feed)).matches().size());
+    assertTrue(
+        resolver
+            .resolve(
+                List.of(official("a", 0, 1, 2, "Sydney W", "Adelaide United W", 1356)),
+                List.of(feed))
+            .matches()
+            .isEmpty());
+    assertNotEquals(SourceIdentity.team("Sydney W"), SourceIdentity.team("Sydney FC"));
+  }
+
+  @Test
+  void scopedBelgianAliasesDoNotCollapseReserveOrBlankIdentities() {
+    var game = official("a", 0, 1, 2, "Liège", "Francs Borains", 211);
+    var feed = provider("p", 0, 10, 20, "RFC Liege", "Royal Francs Borains");
+    assertEquals(1, resolver.resolve(List.of(game), List.of(feed)).matches().size());
+    assertNotEquals(
+        SourceIdentity.team("Club Brugge II", 211), SourceIdentity.team("Club Brugge", 211));
+    assertEquals("", SourceIdentity.team(null, 1583));
+    assertEquals("", SourceIdentity.team("W", 1631));
+  }
+
+  @Test
+  void regionalClubNamesAreResolvedInTheirOwnLeague() {
+    assertEquals(
+        1,
+        resolver
+            .resolve(
+                List.of(official("a", 0, 1, 2, "Keçiörengücü", "Hatayspor", 603)),
+                List.of(provider("p", 0, 10, 20, "Ankara Keciorengucu", "Hatayspor")))
+            .matches()
+            .size());
+    assertEquals(
+        1,
+        resolver
+            .resolve(
+                List.of(official("a", 0, 1, 2, "Sporting Delhi", "ATK Mohun Bagan", 1007)),
+                List.of(provider("p", 0, 10, 20, "Sporting Club Delhi", "Mohun Bagan Super Giant")))
+            .matches()
+            .size());
+    assertEquals(
+        1,
+        resolver
+            .resolve(
+                List.of(official("a", 0, 1, 2, "Central Coast Mariners", "Newcastle Jets", 1356)),
+                List.of(
+                    provider("p", 0, 10, 20, "Central Coast Mariners", "Newcastle United Jets")))
+            .matches()
+            .size());
   }
 }
