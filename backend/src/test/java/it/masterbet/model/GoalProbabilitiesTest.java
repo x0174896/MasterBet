@@ -84,5 +84,8 @@ class GoalProbabilitiesTest {
     var learned = trainer.train(x, y);
     assertArrayEquals(new double[] {1, 2, 1, 3}, learned.predict(new double[] {1, 3}), 1e-6);
     assertArrayEquals(learned.weights()[0], trainer.train(x, y).weights()[0]);
+    var warm = trainer.train(x, y, learned);
+    assertArrayEquals(
+        learned.predict(new double[] {1, 3}), warm.predict(new double[] {1, 3}), 1e-6);
   }
 }

@@ -1,5 +1,7 @@
 # Dati, cronologia e interpretazione del modello
 
+> Archivio dell'esperimento norvegese precedente. Per il metodo corrente vedere [HISTORICAL_LAB_METHOD.md](HISTORICAL_LAB_METHOD.md). Conteggi, limite cinque e politica quote descritti qui non rappresentano la nuova campagna.
+
 Verifica iniziale: 18 ottobre 2026. I dati sono reali e conservati nell'archivio privato locale. Questa guida documenta le scelte che incidono sulla riproducibilità; `PROJECT_FEATURES.md` elenca lo stato funzionale.
 
 ## Scenario iniziale congelato

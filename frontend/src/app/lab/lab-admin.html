@@ -1,0 +1,259 @@
+<div class="d-flex justify-content-between mb-3">
+  <div>
+    <h2 class="h4">Amministrazione</h2>
+    <p class="text-secondary">
+      Archivio dei risultati, archivio delle quote e calcolo sono tre processi indipendenti.
+    </p>
+  </div>
+  @if (session()?.authenticated) {
+    <button class="btn btn-outline-secondary align-self-start" (click)="logout()">Esci</button>
+  }
+</div>
+@if (error()) {
+  <div role="alert" class="alert alert-danger">{{ error() }}</div>
+}
+@if (notice()) {
+  <div role="status" class="alert alert-success">{{ notice() }}</div>
+}
+@if (session(); as s) {
+  @if (!s.authenticated) {
+    <form class="card card-body mx-auto" style="max-width: 480px" (ngSubmit)="login()">
+      <h3 class="h5">
+        {{ s.configured ? 'Accesso riservato' : 'Crea l’accesso amministratore locale' }}
+      </h3>
+      <label for="admin-password" class="form-label mt-3">Password (almeno 12 caratteri)</label
+      ><input
+        class="form-control"
+        id="admin-password"
+        name="password"
+        type="password"
+        minlength="12"
+        maxlength="256"
+        required
+        [autocomplete]="s.configured ? 'current-password' : 'new-password'"
+        [(ngModel)]="password"
+      />
+      @if (!s.configured) {
+        <label class="form-label mt-3" for="admin-confirm">Ripeti la password</label
+        ><input
+          class="form-control"
+          id="admin-confirm"
+          name="confirmation"
+          type="password"
+          autocomplete="new-password"
+          required
+          [(ngModel)]="confirmation"
+        />
+        <p class="small text-secondary mt-3">
+          La prima configurazione è disponibile dal computer locale. Nel progetto viene conservata
+          soltanto una derivazione della password, senza conservarne il testo originale.
+        </p>
+      }
+      <button class="btn btn-primary mt-4" [disabled]="busy() || password.length < 12">
+        {{ s.configured ? 'Accedi' : 'Configura e accedi' }}
+      </button>
+    </form>
+  } @else {
+    <div class="card card-body mb-4">
+      <h3 class="h5">Periodo e fonti</h3>
+      <div class="row g-3 mt-1">
+        <div class="col-md-3">
+          <label class="form-label" for="admin-from">Inizio test / quote</label
+          ><input
+            id="admin-from"
+            type="date"
+            class="form-control"
+            min="2026-01-01"
+            [(ngModel)]="from"
+          />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="admin-to">Fine acquisizione</label
+          ><input id="admin-to" type="date" class="form-control" [min]="from" [(ngModel)]="to" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="admin-books"
+            >Bookmaker (massimo 3, separati da virgola)</label
+          ><input id="admin-books" class="form-control" [(ngModel)]="bookmakers" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="admin-leagues"
+            >Campionati (nessuna selezione = tutti quelli comuni)</label
+          ><select
+            id="admin-leagues"
+            class="form-select"
+            multiple
+            size="5"
+            [(ngModel)]="competitionIds"
+          >
+            @for (c of state.coverage(); track c.id) {
+              @if (!c.cup && c.oddsTournamentId) {
+                <option [ngValue]="c.id">{{ c.country }} · {{ c.name }}</option>
+              }
+            }
+          </select>
+        </div>
+        <div class="col-md-6">
+          <div class="form-check mt-3">
+            <input
+              class="form-check-input"
+              id="admin-refresh"
+              type="checkbox"
+              [(ngModel)]="refresh"
+            /><label class="form-check-label" for="admin-refresh"
+              >Aggiorna anche risposte già archiviate</label
+            >
+          </div>
+          <p class="small text-secondary mt-2">
+            I risultati definitivi si riutilizzano. L’aggiornamento forza la verifica di correzioni
+            e rinvii. Le quote conservano tutti gli aggiornamenti; ripetere un download riprende
+            dalla cache senza duplicare gli incontri.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <article class="card card-body h-100">
+          <span class="eyebrow">01 · CATALOGO</span>
+          <h3 class="h5">Trova i campionati comuni</h3>
+          <p class="small text-secondary">
+            Incrocia i cataloghi e rende visibili le competizioni abbinate. La copertura effettiva
+            emerge dai download.
+          </p>
+          <button
+            class="btn btn-outline-primary mt-auto"
+            [disabled]="busy() || running('catalog')"
+            (click)="start('catalog')"
+          >
+            Aggiorna catalogo
+          </button>
+        </article>
+      </div>
+      <div class="col-md-4">
+        <article class="card card-body h-100">
+          <span class="eyebrow">02 · RISULTATI</span>
+          <h3 class="h5">Scarica partite e gol</h3>
+          <p class="small text-secondary">
+            Calcio.com: stagione intera per la preparazione, HT/FT e coppe delle squadre coinvolte.
+            Nessuna richiesta quote.
+          </p>
+          <button
+            class="btn btn-outline-primary mt-auto"
+            [disabled]="busy() || running('results')"
+            (click)="start('results')"
+          >
+            Scarica risultati
+          </button>
+        </article>
+      </div>
+      <div class="col-md-4">
+        <article class="card card-body h-100">
+          <span class="eyebrow">03 · QUOTE</span>
+          <h3 class="h5">Scarica lo storico delle quote</h3>
+          <p class="small text-secondary">
+            OddsPapi: aggiornamenti prepartita dei bookmaker scelti. È possibile avviarlo anche
+            prima dei risultati.
+          </p>
+          <button
+            class="btn btn-outline-primary mt-auto"
+            [disabled]="busy() || running('quotes')"
+            (click)="start('quotes')"
+          >
+            Scarica quote
+          </button>
+        </article>
+      </div>
+    </div>
+    <div class="card card-body mb-4">
+      <h3 class="h5">Calcola entrambe le modalità</h3>
+      <p class="small text-secondary">
+        Usa solo gli archivi locali. Addestra il modello ogni settimana e salva una singola per ogni
+        incontro idoneo, con e senza gol di coppa. Le condizioni di qualità restano visibili nella
+        pagina Modello.
+      </p>
+      <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+          <label for="admin-mode" class="form-label">Modalità</label
+          ><select id="admin-mode" class="form-select" [(ngModel)]="mode">
+            <option value="HISTORICAL">Test storico con consultazione nel tempo</option>
+            <option value="OPERATIONAL">Operativo, prossimo periodo senza rewind</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label for="admin-unit" class="form-label">Utile netto obiettivo per singola (€)</label
+          ><input
+            id="admin-unit"
+            type="number"
+            min="0.01"
+            max="1000"
+            step="0.01"
+            class="form-control"
+            [(ngModel)]="unitProfit"
+          />
+        </div>
+        <div class="col-md-5">
+          <button
+            class="btn btn-primary w-100"
+            [disabled]="busy() || running('calculate') || running('results') || running('quotes')"
+            (click)="start('calculate')"
+          >
+            Avvia elaborazione completa
+          </button>
+        </div>
+      </div>
+      <p class="small text-secondary mt-3 mb-0">
+        Terminato il processo, usa “Aggiorna archivio” per scegliere la nuova elaborazione. Il
+        capitale non viene aumentato dagli spoiler.
+      </p>
+    </div>
+    <h3 class="h5">Avanzamento dei processi</h3>
+    @for (job of jobs(); track job.id) {
+      <article class="card card-body mb-3">
+        <div class="d-flex justify-content-between">
+          <strong>{{
+            job.kind === 'results'
+              ? 'Risultati'
+              : job.kind === 'quotes'
+                ? 'Quote'
+                : job.kind === 'calculate'
+                  ? 'Elaborazione'
+                  : 'Catalogo'
+          }}</strong
+          ><span
+            class="badge"
+            [class.text-bg-primary]="job.status === 'RUNNING'"
+            [class.text-bg-success]="job.status === 'SUCCEEDED'"
+            [class.text-bg-warning]="job.status !== 'RUNNING' && job.status !== 'SUCCEEDED'"
+            >{{ job.status }}</span
+          >
+        </div>
+        <p class="small my-2" role="status">{{ job.message }}</p>
+        @if (job.total > 0) {
+          <progress
+            class="w-100"
+            [value]="job.completed"
+            [max]="job.total"
+            [attr.aria-label]="'Avanzamento ' + job.kind"
+          ></progress>
+        }
+        <small class="text-secondary"
+          >{{ job.completed }} elementi elaborati · aggiornamento
+          {{ job.updatedAt | date: 'dd/MM HH:mm:ss' }}</small
+        >
+        @if (job.errors.length) {
+          <details class="mt-2">
+            <summary>{{ job.errors.length }} segnalazioni</summary>
+            <ul class="small mt-2">
+              @for (error of job.errors; track $index) {
+                <li>{{ error }}</li>
+              }
+            </ul>
+          </details>
+        }
+      </article>
+    } @empty {
+      <p class="text-secondary">Nessun processo avviato.</p>
+    }
+  }
+}

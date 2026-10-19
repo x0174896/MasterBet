@@ -1,6 +1,6 @@
 # Predisposizione, verifiche e avvio
 
-Verificato su Windows il 18 ottobre 2026. Eseguire i comandi dalla cartella indicata. Usare `develop` per lo sviluppo e `main` per le versioni integrate.
+Aggiornato su Windows il 19 ottobre 2026 per il laboratorio multicampionato. Eseguire i comandi dalla cartella indicata. Usare `develop` per lo sviluppo e `main` per le versioni integrate.
 
 ## Versioni adottate
 
@@ -85,7 +85,55 @@ $env:MAVEN_OPTS='-Djavax.net.ssl.trustStoreType=Windows-ROOT -Djavax.net.ssl.tru
 
 La verifica TLS resta attiva. Per l'importazione Java usare gli stessi due parametri `-D` prima di `-jar` se la rete richiede lo store Windows. Non impostare `NODE_TLS_REJECT_UNAUTHORIZED=0`.
 
-## Importazione storica e addestramento
+## Laboratorio multicampionato corrente
+
+Flyway V5–V9 aggiunge archivio competizioni/partite/quote/revisioni, job/checkpoint, lock di avvio, elaborazioni/step/proposte e spoiler. V1–V4 e i dati sorgenti precedenti restano conservati. Nessuna dipendenza applicativa aggiunta. Il formatter Google Java Format 1.37.0 è stato usato solo come strumento temporaneo locale, non è necessario per avvio/build.
+
+Aprire `/admin` nel frontend: prima password locale scelta dall'utente (almeno 12 caratteri), poi sessione HttpOnly/SameSite Strict di otto ore. Salt e hash PBKDF2-HMAC-SHA256 (310.000 iterazioni) in `.local/data/private/admin-credential.json`, mai password in chiaro o Git. Sessioni in memoria: dopo riavvio si accede di nuovo. Nessun account o chiave nuova presso fornitori.
+
+Ordine ordinario: catalogo comune; risultati e quote indipendenti, anche in parallelo; calcolo offline dopo i download. Scegliere campionati, date, massimo tre bookmaker e aggiornamento forzato nell'admin. Risultati della stessa stagione antecedenti a gennaio vengono importati per la preparazione. Quote assenti hanno checkpoint ricontrollabili; l'aggiornamento forzato conserva le versioni precedenti. I calendari vengono ricontrollati per i rinvii, i risultati definitivi riusati. Il calcolo crea una nuova elaborazione e tutte le settimane/modalità; cambiarne la consultazione non ripete download/addestramento.
+
+Da `backend`, dopo `package`, sono disponibili comandi locali equivalenti. Aggiungere i parametri TLS già documentati quando necessari; `--server.port=0` assegna una porta temporanea senza interferire con l'app aperta.
+
+```powershell
+java -jar target/masterbet-backend-0.1.0.jar --lab-action=catalog --server.port=0
+java -jar target/masterbet-backend-0.1.0.jar --lab-action=results --lab-from=2026-01-01 --lab-to=2026-10-18 --server.port=0
+java -jar target/masterbet-backend-0.1.0.jar --lab-action=quotes --lab-from=2026-01-01 --lab-to=2026-10-18 --server.port=0
+java -jar target/masterbet-backend-0.1.0.jar --lab-action=calculate --lab-from=2026-01-01 --lab-to=2026-10-18 --server.port=0
+java -jar target/masterbet-backend-0.1.0.jar --lab-action=campaign --lab-from=2026-01-01 --lab-to=2026-10-18 --server.port=0
+```
+
+Opzionali: `--lab-competitions=384,82` (ID Calcio, non OddsPapi), `--lab-refresh` per ricaricare le sorgenti. `campaign` avvia due job distinti e calcola successivamente; non avviarlo mentre sono attivi altri download dello stesso tipo. Processi e avanzamento sono persistiti e visibili nell'admin, anche se avviati da CLI. Dopo crash/riavvio, ripetere il download per usare la cache: non esiste un servizio di riavvio automatico del PC. Un calcolo interrotto conserva gli step e si ripete come nuova elaborazione.
+
+Backup/reset legacy: dalla radice eseguire `scripts/backup-lab.ps1` sul solo DB locale documentato; il dump custom viene verificato con `pg_restore --list` e SHA-256. Poi da backend `java -jar target/masterbet-backend-0.1.0.jar --lab-action=reset-legacy --server.port=0`. Il reset verifica nuovamente manifest/hash, archivia e rimuove solo le righe delle vecchie schedine, senza cancellare sorgenti/snapshot/modelli. Non è un reset completo del laboratorio.
+
+### Contratto API corrente
+
+| Metodo e percorso | Contratto |
+|---|---|
+| `GET /api/lab/coverage` | Catalogo, risultati, quote riconciliate/da abbinare, squadre con sette precedenti e intervallo coperto |
+| `GET /api/lab/runs` | Elaborazioni, stato, configurazione, hash, tempi reali/simulati |
+| `GET /api/lab/workspace` | `runId`, `cursor` ISO UTC facoltativo, `cups` boolean, `competition` ID Calcio o 0, `page` da 0; 50 proposte, saldi, sequenza completa del grafico, modello dello step consultabile |
+| `GET /api/lab/statistics` | `runId`, `cursor`, `cups`, `competition`; statistiche per competizione/stagione con dati entro il taglio |
+| `POST /api/lab/reveal` | `{runId,betId}`; spoiler persistito, nessun effetto monetario |
+| `GET /api/lab/admin/session` | `{configured,authenticated}` |
+| `POST /api/lab/admin/login` | `{password,setup}`; `setup:true` solo al primo accesso locale |
+| `POST /api/lab/admin/logout` | Revoca la sessione corrente |
+| `GET /api/lab/admin/jobs` | Richiede sessione; stati/contatori/messaggi/errori dei processi |
+| `POST /api/lab/admin/catalog?refresh=false` | Job del catalogo |
+| `POST /api/lab/admin/results` / `quotes` | `{competitionIds:[],from,to,bookmakers:[...],refresh:false}`; vuoto=tutti i campionati comuni pertinenti; date da gennaio 2026, download fino a oggi+14 giorni |
+| `POST /api/lab/admin/calculate` | `{from,to,competitionIds:[],unitProfit:5,mode:"HISTORICAL"}` oppure `OPERATIONAL`; storico fino a oggi, operativo dal tempo reale per sette giorni |
+| `POST /api/lab/admin/reset-legacy` | Richiede backup verificato, restituisce numero righe archiviate |
+
+Tutte le scritture `/admin` richiedono `X-MasterBet-Admin: 1`. Serve anche la sessione, tranne login e logout; logout revoca quella presente. Origine browser locale e corrispondente all'Host, nessuna policy CORS aperta. Errori ProblemDetail: 400 richiesta, 401 accesso, 403 origine/intestazione, 404 risorsa, 409 processi incompatibili, 429 tentativi accesso; errori interni senza dettagli privati. Nessuna chiave API restituita al browser.
+
+Stati job: `RUNNING`, `SUCCEEDED`, `PARTIAL`, `FAILED`, `INTERRUPTED`. La copertura parziale non viene nascosta. Nessuna modalità mock o comando `build:mock`: stub solo nei test aggiornati. I vecchi endpoint scenario/betting/advance rispondono 410 per default (`masterbet.legacy-api-enabled=false` implicito); il profilo test li abilita per regressione. Non attivare quel flag nell'uso ordinario.
+
+`Calcio` raw in `.local/data/calcio`, `OddsPapi` in `.local/data/raw`; revisioni immutabili e hash verificati. Primo fischio finale sconosciuto: disponibilità prudenziale kickoff +24 ore, esposta nelle proposte. Metodo, soglie, deroga quote e limiti in [docs/HISTORICAL_LAB_METHOD.md](docs/HISTORICAL_LAB_METHOD.md).
+
+## Esperimento norvegese precedente — comandi di archivio
+
+Le sezioni seguenti documentano l'implementazione precedente conservata. Non usare il suo import/job per la campagna multicampionato attuale; date, limiti cinque e contratti sono storici.
 
 Da `backend`, dopo `package`, con il database disponibile:
 

@@ -1,0 +1,22 @@
+.lab-nav {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.lab-nav .nav-link {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.lab-intro {
+  gap: 24px;
+}
+.lab-intro > button {
+  flex-shrink: 0;
+}
+@media (max-width: 575px) {
+  .lab-intro {
+    display: block;
+  }
+  .lab-intro > button {
+    margin-top: 18px;
+  }
+}

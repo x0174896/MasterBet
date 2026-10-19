@@ -26,8 +26,20 @@ public class OddsPapiClient {
   }
 
   public synchronized JsonNode get(String endpoint, Map<String, String> parameters) {
+    return get(endpoint, parameters, false);
+  }
+
+  public synchronized JsonNode refresh(String endpoint, Map<String, String> parameters) {
+    return get(endpoint, parameters, true);
+  }
+
+  public synchronized JsonNode account() {
+    return request("account", Map.of());
+  }
+
+  private JsonNode get(String endpoint, Map<String, String> parameters, boolean refresh) {
     var cached = archive.read(endpoint, parameters);
-    if (cached.isPresent()) return cached.get();
+    if (!refresh && cached.isPresent()) return cached.get();
     if (remaining == null) {
       var account = request("account", Map.of());
       for (var subscription : account.path("subscriptions")) {

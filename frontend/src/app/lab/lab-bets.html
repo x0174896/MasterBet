@@ -1,0 +1,151 @@
+@if (state.workspace(); as w) {
+  <div class="d-flex justify-content-between align-items-end mb-3">
+    <div>
+      <p class="eyebrow">SINGOLE SALVATE</p>
+      <h2 class="h4">Le proposte per ogni partita</h2>
+      <p class="text-secondary">
+        {{ w.totalBets }} singole · {{ w.settled }} concluse · {{ w.won }} vincenti ·
+        {{ w.lost }} perdenti
+      </p>
+    </div>
+    <div class="text-end">
+      <small>Utile netto all’istante selezionato</small>
+      <div class="h3" [class.text-danger]="w.net < 0" [class.text-success]="w.net >= 0">
+        {{ w.net | currency: 'EUR' }}
+      </div>
+    </div>
+  </div>
+  @if (!w.totalBets) {
+    <div class="alert alert-info">
+      Nessuna proposta in questa modalità e in questo campionato. Servono sette precedenti per
+      entrambe le squadre e almeno un esito idoneo.
+    </div>
+  }
+  <div class="row g-3">
+    @for (item of w.bets; track item.bet.id) {
+      <div class="col-xl-6">
+        <article class="card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between gap-2 mb-2">
+              <small class="text-secondary"
+                >{{ item.bet.competition }} · {{ item.bet.season }} · settimana
+                {{ item.bet.step }}</small
+              ><span
+                class="badge"
+                [class.text-bg-success]="item.status === 'WON'"
+                [class.text-bg-danger]="item.status === 'LOST'"
+                [class.text-bg-secondary]="item.status === 'PENDING'"
+                >{{
+                  item.status === 'PENDING'
+                    ? 'In attesa'
+                    : item.status === 'WON'
+                      ? 'Vincente'
+                      : 'Perdente'
+                }}</span
+              >
+            </div>
+            <h3 class="h5">
+              {{ item.bet.home }} <span class="text-secondary">–</span> {{ item.bet.away }}
+            </h3>
+            <p class="small text-secondary">
+              {{ item.bet.kickoff | date: 'EEEE d MMMM yyyy, HH:mm' }} · proposta dal
+              {{ item.bet.availableAt | date: 'dd/MM/yyyy' }}
+            </p>
+            <div
+              class="d-flex justify-content-between align-items-center border-top border-bottom py-3"
+            >
+              <div class="fw-semibold">
+                {{ item.bet.quote.market.name }}<br /><span class="text-primary">{{
+                  item.bet.quote.outcome
+                }}</span>
+                <small class="text-secondary">· {{ item.bet.quote.bookmaker }}</small>
+              </div>
+              <strong class="fs-4">{{ item.bet.quote.price | number: '1.2-3' }}</strong>
+            </div>
+            <div class="row my-3">
+              <div class="col">
+                <small>Puntata</small>
+                <div>{{ item.bet.stake | currency: 'EUR' }}</div>
+              </div>
+              <div class="col">
+                <small>Probabilità stimata</small>
+                <div>{{ item.bet.probability | percent: '1.1-1' }}</div>
+              </div>
+              <div class="col">
+                <small>Delta (EV)</small>
+                <div>{{ item.bet.expectedValue | percent: '1.1-1' }}</div>
+              </div>
+            </div>
+            @if (item.status === 'PENDING') {
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                (click)="state.reveal(item.bet.id)"
+                [disabled]="item.revealed"
+                [attr.aria-label]="
+                  'Mostra spoiler per ' + item.bet.home + ' contro ' + item.bet.away
+                "
+              >
+                <span aria-hidden="true">◉</span>
+                {{ item.revealed ? 'Spoiler consultato' : 'Mostra spoiler' }}
+              </button>
+              @if (item.spoiler) {
+                <p class="small mt-2 mb-0">
+                  Spoiler: {{ item.spoiler === 'WON' ? 'vincente' : 'perdente' }}. Rimane in attesa
+                  e non modifica il saldo.
+                </p>
+              }
+            } @else {
+              <p class="mb-2" [class.text-danger]="(item.net ?? 0) < 0">
+                Risultato netto: {{ item.net | currency: 'EUR' }}
+              </p>
+            }
+            <details class="mt-3">
+              <summary class="small">Perché questa scommessa</summary>
+              @if (item.timingBasis?.includes('CONSERVATIVE')) {
+                <p class="small mt-2">
+                  La fonte non indica il fischio finale: nel test l’esito diventa utilizzabile dal
+                  {{ item.resultAvailableAt | date: 'dd/MM/yyyy HH:mm' }}, con il limite prudenziale
+                  di 24 ore dal calcio d’inizio.
+                </p>
+              }
+              @for (reason of item.bet.explanation; track $index) {
+                <p class="small mt-2 mb-1">{{ reason }}</p>
+              }
+              <p class="small text-secondary mt-2">
+                Quota prepartita del {{ item.bet.quote.observedAt | date: 'dd/MM/yyyy HH:mm' }};
+                nello storico può essere successiva al taglio settimanale.
+              </p>
+            </details>
+          </div>
+        </article>
+      </div>
+    }
+  </div>
+  @if (w.pages > 1) {
+    <nav aria-label="Pagine delle scommesse" class="d-flex gap-3 align-items-center my-4">
+      <button
+        class="btn btn-outline-primary"
+        [disabled]="w.page === 0"
+        (click)="state.load(w.page - 1)"
+      >
+        Precedenti</button
+      ><span>{{ w.page + 1 }} / {{ w.pages }}</span
+      ><button
+        class="btn btn-outline-primary"
+        [disabled]="w.page + 1 >= w.pages"
+        (click)="state.load(w.page + 1)"
+      >
+        Successive
+      </button>
+    </nav>
+  }
+} @else if (!state.loading()) {
+  <div class="card card-body py-5 text-center">
+    <h2 class="h4">Prepariamo la prima elaborazione</h2>
+    <p class="text-secondary">
+      Scarica risultati e quote dall’amministrazione, poi avvia il calcolo storico. Le vecchie
+      schedine saranno sostituite dalle nuove singole.
+    </p>
+    <a routerLink="/admin">Apri amministrazione</a>
+  </div>
+}

@@ -107,13 +107,9 @@ public class OddsPapiHttpTransport {
           retryLog(endpoint, attempt, delay);
           continue;
         }
-        throw new IllegalStateException(
-            "OddsPapi "
-                + endpoint
-                + ": HTTP "
-                + response.statusCode()
-                + (rateLimited ? " (limite temporaneo, tentativi esauriti)" : "")
-                + ". Cache conservata");
+        String safeCode =
+            code.matches("[A-Z0-9_]{1,80}") ? code : (rateLimited ? "RATE_LIMITED" : "HTTP_ERROR");
+        throw new OddsPapiResponseException(response.statusCode(), safeCode, endpoint);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new IllegalStateException("Importazione interrotta; cache conservata");

@@ -13,6 +13,18 @@ class RawResponseArchiveTest {
   @TempDir Path dir;
 
   @Test
+  void refreshPreservesImmutablePreviousResponse() throws Exception {
+    var archive = new RawResponseArchive(dir.toString(), new ObjectMapper());
+    archive.save("fixture", Map.of("id", "f"), "{\"date\":1}");
+    archive.save("fixture", Map.of("id", "f"), "{\"date\":2}");
+    assertEquals(2, archive.read("fixture", Map.of("id", "f")).orElseThrow().path("date").asInt());
+    try (var files = Files.list(dir.resolve("raw/revisions"))) {
+      var revision = files.findFirst().orElseThrow();
+      assertTrue(Files.readString(revision).contains("date\\\":1"));
+    }
+  }
+
+  @Test
   void cachesExactBodyAndRejectsTampering() throws Exception {
     var archive = new RawResponseArchive(dir.toString(), new ObjectMapper());
     archive.save("scores", Map.of("fixtureId", "f"), "{\"score\":2}");
