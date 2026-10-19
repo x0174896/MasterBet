@@ -1,6 +1,6 @@
 # Inventario funzionale MasterBet
 
-Ultimo aggiornamento: 19 ottobre 2026 — laboratorio multicampionato; campagna dati reale in corso.
+Ultimo aggiornamento: 19 ottobre 2026 — correzione archivi quote voluminosi, conflitti e ripresa; campagna dati reale in corso.
 
 ## Funzionalità implementate
 
@@ -10,6 +10,9 @@ Ultimo aggiornamento: 19 ottobre 2026 — laboratorio multicampionato; campagna 
 - Coppe delle squadre coinvolte acquisite anche per la preparazione precedente al test. Nessuna proposta sulle coppe. Competizioni senza stagione pertinente escluse dal download richiesto.
 - Amministrazione riservata: prima password scelta localmente, PBKDF2, sessione HttpOnly/SameSite, controllo origine e intestazione anti-CSRF. Periodo, campionati, bookmaker, aggiornamento, modalità e utile obiettivo configurabili. Job, avanzamento/errori e checkpoint persistenti; ripresa dopo interruzione/PID riutilizzato.
 - Download risultati e quote concorrenti, avvio serializzato nel DB, nessun doppio job dello stesso tipo. Il calcolo è escluso mentre cambiano le sorgenti. Aprire le pagine/cambiare filtri non chiama le fonti esterne.
+- Archivi OddsPapi con risposta JSON incapsulata leggibili fino a 128 milioni di caratteri per stringa dell'involucro, senza allentare i limiti del payload né la verifica dell'hash. Corretto il limite predefinito di 20 milioni che bloccava la rilettura di storici validi già scaricati.
+- Storici con aggiornamenti discordanti conservati integralmente e uniti senza duplicazioni. Conflitti in-play non alterano i prezzi prepartita; se l'ultimo aggiornamento utilizzabile è ambiguo, solo quell'esito è indisponibile, senza scegliere prezzi arbitrari o recuperare quello precedente. Alias verificato Leyton Orient London / Leyton Orient.
+- Checkpoint quote `IMPORTED` scritto solo dopo tutti i salvataggi dell'incontro. Una risposta soltanto `DOWNLOADED` viene riprocessata dalla cache; incontri conclusi completamente importati e assenze già verificate vengono riutilizzati, salvo aggiornamento forzato.
 - Sette risultati precedenti per entrambe le squadre nello stesso campionato e stagione. Il 2025 prepara una stagione 2025/26, non un annuale 2026. Le coppe non soddisfano la soglia.
 - Riaddestramento Poisson globale ogni sette giorni: statistiche per campionato/stagione, medie degli ultimi sette precedenti, interazioni attacco/difesa, calendario, riposo e trasferte. Almeno 25 righe globali idonee, validazione cronologica 80/20 e MAE sui quattro conteggi di gol. Normalizzazione, pesi e riuso dei coefficienti dipendono solo dal prefisso consentito.
 - Checkbox: senza gol di coppa (32 variabili) oppure con indicatori separati degli ultimi 90 giorni (42). Calendario delle coppe, riposo, frequenza e trasferte in entrambe. Modelli, proposte e saldi separati e persistiti.
@@ -28,7 +31,9 @@ Ultimo aggiornamento: 19 ottobre 2026 — laboratorio multicampionato; campagna 
 
 Campagna 1 gennaio–18 ottobre 2026 avviata, non ancora conclusa. Già verificati oltre duemila risultati e acquisiti oltre quarantamila esiti quotati; contatori correnti nell'amministrazione. Diverse risposte di gennaio sono `404 / No historical odds found`; verificato un incontro di maggio con storico di tutti e tre i bookmaker. Catalogo, incontri riconciliati e copertura effettiva restano conteggi distinti. Nessuna conclusione statistica della campagna completa ancora disponibile.
 
-Verifica finale riuscita: 129 test JUnit 5/H2, 46 test Angular/Vitest e build frontend di produzione. Coperti parser/rinvii, soglia sette, campionati/stagioni, coppe, sospensioni, download indipendenti, concorrenza/ripresa, accesso e origine, futuro escluso, probabilità ricostruite dagli input congelati, spoiler e grafico. Nessun mock applicativo da compilare.
+Verifica riuscita dopo le correzioni: 139 test JUnit 5/H2, 46 test Angular/Vitest e build frontend di produzione. Coperti anche rilettura/aggiornamento di archivi oltre 20 MB, conflitti prepartita/in-play, deduplicazione in persistenza, alias Leyton Orient e checkpoint dopo errori di salvataggio. Restano coperti parser/rinvii, soglia sette, campionati/stagioni, coppe, sospensioni, download indipendenti, concorrenza/ripresa, accesso e origine, futuro escluso, probabilità ricostruite dagli input congelati, spoiler e grafico. Nessun mock applicativo da compilare; contratti HTTP invariati.
+
+Audit reale del 19 ottobre sulle 69 risposte già segnalate (59 archivi oltre il limite di lettura e 10 incontri con conflitti): rilettura/hash, fusione idempotente e selezione strettamente prepartita verificati su 88.945 serie, zero errori, senza nuove richieste API o scritture nel database. Dei 39 abbinamenti mancanti esaminati in League One, 34 dipendono dall'alias Leyton Orient; gli altri cinque sono eventi `Cancelled` nel calendario OddsPapi, correttamente esclusi anziché associati a un altro incontro.
 
 Browser reale: pagine distinte, catalogo dal DB, stato senza elaborazioni complete, amministrazione riservata e navigazione su schermo stretto. Grafico popolato/esiti verificati automaticamente; campagna completa reale ancora non consultabile.
 
@@ -45,5 +50,6 @@ Browser reale: pagine distinte, catalogo dal DB, stato senza elaborazioni comple
 
 ## Registro delle modifiche
 
+- 19 ottobre 2026: corretti archivi quote validi oltre il limite di lettura, fusione degli aggiornamenti discordanti, disponibilità prudenziale degli esiti ambigui, alias Leyton Orient e checkpoint distinto fra download e importazione completa. Cache e risultati precedenti riutilizzati; nessuna modifica al contratto API o ai mock applicativi, assenti.
 - 19 ottobre 2026: laboratorio multicampionato, import separati, sette precedenti, modalità coppe, riaddestramento/pattern, singole, amministrazione, versioni, consultazione e grafico netto. Backup/reset eseguiti; campagna reale in corso. Inventario aggiornato distinguendo l'archivio norvegese dal comportamento corrente.
 - 18 ottobre 2026: esperimento Eliteserien fino allo step 11, selezione limitata a cinque schedine e API precedenti; dati conservati come archivio.

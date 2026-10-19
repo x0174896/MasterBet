@@ -27,12 +27,17 @@ public record LabQuote(
   }
 
   public Optional<QuotedOutcome> asOf(Instant cutoff, Instant kickoff) {
-    return new AsOfPriceSelector()
-        .select(updates, cutoff.isBefore(kickoff) ? cutoff : kickoff.minusNanos(1), kickoff)
-        .map(
-            p ->
-                new QuotedOutcome(
-                    fixtureId, bookmaker, market, outcomeId, outcome, p.price(), p.timestamp()));
+    try {
+      return new AsOfPriceSelector()
+          .select(updates, cutoff.isBefore(kickoff) ? cutoff : kickoff.minusNanos(1), kickoff)
+          .map(
+              p ->
+                  new QuotedOutcome(
+                      fixtureId, bookmaker, market, outcomeId, outcome, p.price(), p.timestamp()));
+    } catch (AmbiguousPriceUpdateException e) {
+      // Preserve the conflicting source history, but never choose one of its prices.
+      return Optional.empty();
+    }
   }
 
   public LabQuote merge(LabQuote other) {
@@ -41,20 +46,17 @@ public record LabQuote(
     List<PriceUpdate> all = new ArrayList<>(updates);
     all.addAll(other.updates);
     all = all.stream().distinct().sorted(Comparator.comparing(PriceUpdate::timestamp)).toList();
-    var byTime = new HashMap<Instant, PriceUpdate>();
+    var distinct = new ArrayList<PriceUpdate>();
+    var byTime = new HashMap<Instant, List<PriceUpdate>>();
     for (var update : all) {
-      var existing = byTime.putIfAbsent(update.timestamp(), update);
-      if (existing != null
-          && (existing.price().compareTo(update.price()) != 0
-              || existing.active() != update.active()))
-        throw new IllegalArgumentException("Prezzi discordanti allo stesso istante");
+      var atTime = byTime.computeIfAbsent(update.timestamp(), t -> new ArrayList<>());
+      if (atTime.stream()
+          .noneMatch(
+              u -> u.price().compareTo(update.price()) == 0 && u.active() == update.active())) {
+        atTime.add(update);
+        distinct.add(update);
+      }
     }
-    return new LabQuote(
-        fixtureId,
-        bookmaker,
-        market,
-        outcomeId,
-        outcome,
-        byTime.values().stream().sorted(Comparator.comparing(PriceUpdate::timestamp)).toList());
+    return new LabQuote(fixtureId, bookmaker, market, outcomeId, outcome, distinct);
   }
 }

@@ -13,6 +13,22 @@ class RawResponseArchiveTest {
   @TempDir Path dir;
 
   @Test
+  void largeHistoryEnvelopeIsReadableAndRefreshableWithoutRelaxingPayloadLimits() {
+    var mapper = new ObjectMapper();
+    int originalLimit = mapper.getFactory().streamReadConstraints().getMaxStringLength();
+    var archive = new RawResponseArchive(dir.toString(), mapper);
+    var parameters = Map.of("fixtureId", "large");
+    String body = "{\"score\":2}" + " ".repeat(20_000_100);
+    archive.save("historical-odds", parameters, body);
+    assertEquals(
+        2, archive.read("historical-odds", parameters).orElseThrow().path("score").asInt());
+    archive.save("historical-odds", parameters, "{\"score\":3}");
+    assertEquals(
+        3, archive.read("historical-odds", parameters).orElseThrow().path("score").asInt());
+    assertEquals(originalLimit, mapper.getFactory().streamReadConstraints().getMaxStringLength());
+  }
+
+  @Test
   void refreshPreservesImmutablePreviousResponse() throws Exception {
     var archive = new RawResponseArchive(dir.toString(), new ObjectMapper());
     archive.save("fixture", Map.of("id", "f"), "{\"date\":1}");

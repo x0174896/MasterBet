@@ -58,13 +58,50 @@ class LabQuoteTest {
   }
 
   @Test
-  void repeatedDownloadsDeduplicateAndRejectConflictingTimestamps() {
+  void repeatedDownloadsPreserveConflictsButNeverSelectAnAmbiguousLastPrice() {
     var update = new PriceUpdate(kickoff.minusSeconds(1), new BigDecimal("2"), true);
     assertEquals(1, q(List.of(update)).merge(q(List.of(update))).updates().size());
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            q(List.of(update))
-                .merge(q(List.of(new PriceUpdate(update.timestamp(), new BigDecimal("3"), true)))));
+    var ambiguous =
+        q(List.of(update))
+            .merge(q(List.of(new PriceUpdate(update.timestamp(), new BigDecimal("3"), true))));
+    assertEquals(2, ambiguous.updates().size());
+    assertEquals(2, ambiguous.merge(ambiguous).updates().size());
+    assertTrue(ambiguous.closing(kickoff).isEmpty());
+  }
+
+  @Test
+  void inPlayConflictsCannotInvalidateOrChangeThePreMatchPrice() {
+    var pre = new PriceUpdate(kickoff.minusSeconds(1), new BigDecimal("2"), true);
+    var first =
+        q(List.of(pre, new PriceUpdate(kickoff.plusSeconds(60), new BigDecimal("5.1"), true)));
+    var second =
+        q(List.of(pre, new PriceUpdate(kickoff.plusSeconds(60), new BigDecimal("5.2"), true)));
+    var merged = first.merge(second);
+    assertEquals(3, merged.updates().size());
+    assertEquals(new BigDecimal("2"), merged.closing(kickoff).orElseThrow().price());
+  }
+
+  @Test
+  void aLaterUnambiguousUpdateResolvesTheCurrentCutButNotAnEarlierAmbiguousCut() {
+    var at = kickoff.minusSeconds(120);
+    var history =
+        q(
+            List.of(
+                new PriceUpdate(at, new BigDecimal("2"), true),
+                new PriceUpdate(at, new BigDecimal("3"), true),
+                new PriceUpdate(kickoff.minusSeconds(1), new BigDecimal("4"), true)));
+    assertTrue(history.asOf(kickoff.minusSeconds(60), kickoff).isEmpty());
+    assertEquals(new BigDecimal("4"), history.closing(kickoff).orElseThrow().price());
+  }
+
+  @Test
+  void equivalentDecimalPricesDoNotCreateAmbiguityInTheSelector() {
+    var at = kickoff.minusSeconds(1);
+    var history =
+        q(
+            List.of(
+                new PriceUpdate(at, new BigDecimal("2.00"), true),
+                new PriceUpdate(at, new BigDecimal("2.0"), true)));
+    assertEquals(0, history.closing(kickoff).orElseThrow().price().compareTo(new BigDecimal("2")));
   }
 }

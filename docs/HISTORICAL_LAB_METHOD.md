@@ -28,6 +28,8 @@ Proposte congelate con input, quota, probabilità, versione/hash e motivazione; 
 
 Storico: ultimo aggiornamento strettamente prepartita, anche dopo il taglio settimanale, secondo la deroga richiesta. Ultimo stato inattivo significa esito escluso, senza ripiego su quote vecchie. Operativo: prezzo già esistente nell'istante reale. Esclusi in-play e mercati non modellabili come eventi binari senza rimborso.
 
+Gli originali con prezzi/stati discordanti allo stesso timestamp restano conservati. L'unione delle versioni deduplica solo aggiornamenti equivalenti; non sceglie una variante del conflitto. Conta esclusivamente l'ultimo timestamp ammesso al taglio: se ambiguo, quell'esito è indisponibile; se il conflitto è successivo al kickoff, non invalida le quote prepartita. Un aggiornamento successivo univoco può rendere di nuovo disponibile l'esito, senza modificare la sua disponibilità a un taglio precedente.
+
 Pattern con condizioni predefinite cercati separatamente per campionato/stagione: supporto, frequenza/base, lift, verifica sull'ultimo 20% cronologico e penalizzazione esplorativa delle molte ricerche. Non sono p-value calibrati o prove causali. Quattro relazioni principali per popolazione; le condizioni entrano nelle variabili del modello senza riscrivere proposte passate.
 
 Navigazione dalla prima proposta effettiva della modalità/campionato. Tutte le proposte future precomputate sono visibili con la settimana di generazione; gli esiti non ancora utilizzabili restano in attesa. Lo spoiler non modifica modello/statistiche/saldo. Grafico da zero, un punto per singola liquidabile, ordine di disponibilità e ID stabile, solo netto.
