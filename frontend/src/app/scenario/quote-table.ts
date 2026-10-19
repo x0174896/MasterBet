@@ -14,6 +14,17 @@ export class QuoteTable {
   readonly family = signal('');
   readonly suggestionsOnly = signal(false);
   readonly limit = signal(60);
+  readonly evSort = signal<'none' | 'descending' | 'ascending'>('none');
+  sortByExpectedReturn() {
+    this.evSort.update((direction) => (direction === 'descending' ? 'ascending' : 'descending'));
+    this.limit.set(60);
+  }
+  private compareEv(a: Quote, b: Quote) {
+    if (this.evSort() === 'none') return 0;
+    if (a.expectedReturn === null) return b.expectedReturn === null ? 0 : 1;
+    if (b.expectedReturn === null) return -1;
+    return (a.expectedReturn - b.expectedReturn) * (this.evSort() === 'descending' ? -1 : 1);
+  }
   readonly bookmakers = computed(() => [...new Set(this.quotes().map((q) => q.bookmaker))].sort());
   readonly families = computed(() => [...new Set(this.quotes().map((q) => q.type))].sort());
   readonly filtered = computed(() =>
@@ -27,9 +38,12 @@ export class QuoteTable {
       )
       .sort(
         (a, b) =>
+          this.compareEv(a, b) ||
           this.rank(a.type) - this.rank(b.type) ||
           a.market.localeCompare(b.market) ||
-          (a.line ?? 0) - (b.line ?? 0),
+          (a.line ?? 0) - (b.line ?? 0) ||
+          a.outcomeId.localeCompare(b.outcomeId) ||
+          a.bookmaker.localeCompare(b.bookmaker),
       ),
   );
   readonly visible = computed(() => this.filtered().slice(0, this.limit()));

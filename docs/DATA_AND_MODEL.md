@@ -1,12 +1,14 @@
 # Dati, cronologia e interpretazione del modello
 
+> Archivio dell'esperimento norvegese precedente. Per il metodo corrente vedere [HISTORICAL_LAB_METHOD.md](HISTORICAL_LAB_METHOD.md). Conteggi, limite cinque e politica quote descritti qui non rappresentano la nuova campagna.
+
 Verifica iniziale: 18 ottobre 2026. I dati sono reali e conservati nell'archivio privato locale. Questa guida documenta le scelte che incidono sulla riproducibilità; `PROJECT_FEATURES.md` elenca lo stato funzionale.
 
-## Scenario congelato
+## Scenario iniziale congelato
 
 Il taglio è **2026-04-29T12:00:00Z**, dopo la sesta giornata di calendario dell'Eliteserien. Le 47 partite effettivamente concluse comprendono anticipi e rinvii: le 16 squadre hanno fra 5 e 7 presenze. Si calcola la situazione conoscibile al taglio, non una classifica ricostruita retroattivamente imponendo sei incontri a ciascuno.
 
-Gli 8 eventi previsti appartengono alla settima giornata, dal 1° al 4 maggio. Non si acquisiscono i loro risultati. Per ogni combinazione di evento, bookmaker, mercato ed esito, si sceglie l'ultimo aggiornamento con timestamp non successivo al taglio. Se quell'aggiornamento è inattivo o ha prezzo non valido, l'esito non viene pubblicato; non si torna a un prezzo precedente. Aggiornamenti simultanei contraddittori fanno fallire la selezione.
+Gli 8 eventi previsti appartengono alla settima giornata, dal 1° al 4 maggio. I loro risultati sono esclusi da questo snapshot; entrano nel passato consentito soltanto al successivo avanzamento. Per ogni combinazione di evento, bookmaker, mercato ed esito, si sceglie l'ultimo aggiornamento con timestamp non successivo al taglio. Se quell'aggiornamento è inattivo o ha prezzo non valido, l'esito non viene pubblicato; non si torna a un prezzo precedente. Aggiornamenti simultanei contraddittori fanno fallire la selezione.
 
 Lo snapshot verificato comprende 1.998 prezzi: Unibet 1.373, Pinnacle 433, bet365 192. La selezione tratta correttamente anche serie che iniziano dopo il taglio e aggiornamenti attivi con prezzo zero presenti nel payload: questi ultimi non sono quote utilizzabili. Il prezzo è conservato come decimale, senza ricostruzioni o interpolazioni. Il timestamp mostrato è quello dell'ultimo aggiornamento, non necessariamente l'istante del taglio.
 
@@ -46,11 +48,11 @@ Il contesto contiene soltanto partite concluse al taglio. Non include una proiez
 
 Più basso è meglio. Il modello con coppe supera la base in questo campione, ma non quello con solo campionato. Il campione è insufficiente per una conclusione robusta sul vantaggio delle coppe. Lo scenario usa il modello con coppe come scelta esplicita del primo esperimento, senza selezione basata sui risultati futuri della settima giornata.
 
-1.093 esiti hanno probabilità calcolata. La segnalazione usa `probabilità × quota − 1 ≥ 0,05` e produce 164 segnali. Il valore atteso è teorico, sensibile alla calibrazione e alle ipotesi del modello. Esiti della stessa partita e bookmaker diversi non sono scommesse indipendenti. Non sono implementati selezione di portafoglio, gestione del capitale, liquidazione o ROI storico.
+1.093 esiti hanno probabilità calcolata. La segnalazione usa `probabilità × quota − 1 ≥ 0,05` e produce 164 segnali. Il valore atteso è teorico, sensibile alla calibrazione e alle ipotesi del modello. Esiti della stessa partita e bookmaker diversi non sono scommesse indipendenti. Questi conteggi descrivono lo scenario iniziale; selezione delle schedine, capitale, liquidazione e ROI sono ora implementati come descritto sotto.
 
 ## Verifiche ripetibili e provenienza
 
-`scripts/audit-data.py` rilegge indipendentemente archivio, export del database e API. Controlla gli hash di 163 risposte originali, i 129 punteggi utilizzati (80 training/validazione, 47 scenario, 2 coppe), tutte le quote con timestamp e mercato, completezza della selezione, statistiche ricostruite e assenza di risultati dei target. Verifica anche la corrispondenza fra le API degli 8 eventi e lo snapshot. L'audit non consuma richieste OddsPapi.
+`scripts/audit-data.py` rilegge indipendentemente archivio, export del database e API. Controlla gli hash di 163 risposte originali, i 129 punteggi utilizzati (80 training/validazione, 47 scenario, 2 coppe), tutte le quote con timestamp e mercato, completezza della selezione, statistiche ricostruite e esclusione dei risultati dei target dai dati del modello. Verifica anche la corrispondenza fra le API degli 8 eventi e lo snapshot. L'audit non consuma richieste OddsPapi.
 
 Tutti i 47 primi tempi, finali e calci d'inizio del campionato 2026 sono stati riscontrati con i referti ufficiali NFF, senza differenze. Le 80 partite storiche sono controllate contro i payload originali, ma non tutte contro una seconda fonte. Le verifiche esterne locali sono in `.local/audit/nff-results.json`; se il file manca, l'audit dichiara esplicitamente il controllo NFF non eseguito.
 
@@ -59,4 +61,50 @@ Tutti i 47 primi tempi, finali e calci d'inizio del campionato 2026 sono stati r
 - [Documentazione OddsPapi sui risultati](https://oddspapi.io/en/docs/get-scores).
 - [Quote e conteggio richieste OddsPapi](https://oddspapi.io/us/docs/requests-and-quota).
 
-Il contatore verificato il 18 ottobre 2026 è 239/250: restavano 11 richieste. La ripetizione completa da cache con chiave vuota ha prodotto lo stesso hash. Non è necessario un altro account per consultare o riaddestrare questa prima versione sulla cache esistente.
+Prima dell’avanzamento il contatore era 239/250; dopo lo step 8 è stato verificato a 241/250 (9 residue). La ripetizione completa da cache con chiave vuota ha prodotto lo stesso hash. Non è necessario un altro account per consultare o riaddestrare questa prima versione sulla cache esistente.
+
+
+## Avanzamento verificato: step 8
+
+Il taglio successivo è **6 maggio 2026 ore 12 UTC**. Le partite concluse diventano 57: le otto del precedente gruppo di target più due anticipi del 29–30 aprile. I target dell’8–10 maggio sono sei: due incontri dell’ottava giornata ufficiale sono rinviati al 20 maggio. Non si forza il calendario a otto incontri per finestra. Gli step settimanali possono divergere dai numeri ufficiali di giornata e saltare settimane vuote.
+
+Le 1.787 quote disponibili sono state ricalcolate dalle serie originali con lo stesso criterio temporale. I dieci nuovi HT/FT sono verificati nei referti NFF, identificati per squadre e kickoff; il parser legge solo la prima scheda della partita, mai incontri correlati. Il calendario NFF viene usato per identità/orari e non per importare automaticamente tutti i risultati presenti nella pagina.
+
+Hash verificato dello snapshot dello step 8:
+
+```text
+4a2b7ee44f017acb948101f7f3ba6418924121fa05c4924b8b233d005e031d9a
+```
+
+Il training viene ricostruito usando le 80 partite del 2025 e le 57 del campionato 2026, con separazione cronologica 80/20: 109 training (13 settembre 2025–12 aprile 2026), 28 validazione (15 aprile–4 maggio 2026). I risultati della validazione non contribuiscono ai pesi; possono essere usati come storia nota per previsioni successive al loro completamento.
+
+| Metodo | Brier 1 X 2, 28 partite |
+|---|---:|
+| Base statistica | 0,609880 |
+| Solo campionato | 0,724720 |
+| Calendario e coppe | 0,711693 |
+
+Entrambi i modelli sono **peggiori della base** in questa validazione. Il modello con coppe migliora leggermente quello senza, ma questo non dimostra redditività né una buona calibrazione. Le schedine sono un esperimento riproducibile, non suggerimenti con vincita garantita.
+
+## Scelte congelate, capitale ed occhio
+
+Il job salva le selezioni prima di scaricare nuovi risultati. Ogni schedina conserva quote originali, probabilità, modello, hash e taglio; i bilanci sono indipendenti per le due varianti. La politica corrente `net-profit-unit-v3` punta a cinque proposte: quattro singole e una doppia su sei partite distinte, oppure cinque singole se sono idonee solo cinque partite. Criteri della singola: Unibet, EV almeno 5%, probabilità almeno 50%, quota massimo 5, ordinamento EV; non si ripete una partita per raggiungere cinque.
+
+Un'unità indica l'utile netto obiettivo di una schedina vincente: puntata = unità / (quota − 1). Per le doppie si usa il prodotto delle quote originali, che resta una multipla simulata. Puntata e ritorno lordo arrotondati HALF_UP al centesimo, minimo puntata 0,01 €; il netto effettivo può differire dall'obiettivo. Non c'è un limite per step: restano la disponibilità di capitale e l'assenza di reintegri. La maggiore puntata necessaria a quote basse non deriva da una maggiore fiducia del modello.
+
+Lo step 7 mantiene le quattro scelte originali, congelate prima di acquisirne i risultati. Il calcolo originario a puntate fisse dava **+0,51 € su 8,75 €**; la proposta a cinque dello step 8 impegnava **9,25 €**. Questi importi sono conservati negli archivi di revisione, insieme ai sette esiti già consultati.
+
+Il ricalcolo monetario autorizzato il 18 ottobre, con unità 5 €, mantiene le scelte e produce:
+
+| Gruppo | Puntate totali | Ritorno | Utile netto |
+|---|---:|---:|---:|
+| Step 7, liquidato al taglio | 16,71 € | 22,00 € | +5,29 € |
+| Step 8, risultati consultati con l'occhio | 20,09 € | 27,20 € | +7,11 € |
+
+Al taglio dello step 8, per entrambe le varianti, il capitale è **505,29 €**, disponibile **485,20 €** e impegnato **20,09 €**. Le cinque puntate correnti sono 2,33 / 5,10 / 4,76 / 6,25 / 1,65 €; S1 produce 5,01 € se vince, le altre 5,00 €. Il risultato dell'occhio dello step 8 non entra ancora nel bilancio al taglio. Le revisioni riguardano solo denaro: nessun cambiamento a snapshot, statistiche, quote, modelli, probabilità o stato del job. Questa scelta della politica dopo aver visto gli esiti è **un confronto retrospettivo**, non una nuova verifica indipendente della redditività.
+
+L’icona dell’occhio consulta e conserva il referto reale in un archivio separato. Mostra HT, SH e FT nei 90 minuti, esito di ciascuna selezione, ritorno e netto. Non aggiorna la storia ammessa al modello né liquida il capitale della simulazione; questo avviene soltanto con un avanzamento che rende il risultato conoscibile al taglio. Le selezioni restano immutabili; il comando di ricalcolo esplicito può aggiornare gli importi anche dopo la consultazione, conservando gli originali e senza cambiare risultati o data di acquisizione. Rimborsi, annullamenti e regole particolari del bookmaker non sono implementati: il risultato è una liquidazione matematica dei mercati supportati sui gol sul campo.
+
+La presenza di referti futuri nella cache è quindi intenzionale dopo un clic sull’occhio. L’invariante verificata è la loro **esclusione dai dati del modello**, non la loro assenza da tutto il disco. L’utente che apre l’occhio conosce il futuro: decisioni manuali prese dopo quella consultazione non sono più un test cieco.
+
+L’audit indipendente corrente verifica 171 risposte OddsPapi, 139 punteggi usati, 1.787 quote e le 22 selezioni dei due modelli nei due step. Ricostruisce le probabilità dai pesi e dalle caratteristiche e controlla puntate, proiezioni, capitali di apertura, bilanci, ROI e drawdown. Verificate tutte le sette consultazioni NFF e la conservazione integrale degli originali delle proposte e degli esiti, senza variazione degli snapshot completi. La massima perdita dal picco è misurata a fine step, non lungo la sequenza intragiornaliera delle partite. Il Brier binario del portafoglio riguarda soltanto le selezioni risolte, non tutti i mercati.

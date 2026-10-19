@@ -2,6 +2,7 @@ package it.masterbet.odds.infrastructure;
 
 import it.masterbet.football.domain.Fixture;
 import it.masterbet.ingestion.infrastructure.OddsPapiClient;
+import it.masterbet.laboratory.domain.LabQuote;
 import it.masterbet.odds.application.HistoricalOddsSource;
 import it.masterbet.odds.domain.*;
 import java.time.Instant;
@@ -86,5 +87,61 @@ public class OddsPapiHistoricalOddsDownloader implements HistoricalOddsSource {
                                   });
                         }));
     return List.copyOf(result);
+  }
+
+  /** Archivio completo degli aggiornamenti: il filtro prepartita avviene nel calcolo offline. */
+  public List<LabQuote> downloadHistory(Fixture fixture, List<String> bookmakers, boolean refresh) {
+    if (bookmakers.isEmpty() || bookmakers.size() > 3)
+      throw new IllegalArgumentException("Richiesti da uno a tre bookmaker");
+    var parameters = Map.of("fixtureId", fixture.id(), "bookmakers", String.join(",", bookmakers));
+    var data =
+        refresh
+            ? client.refresh("historical-odds", parameters)
+            : client.get("historical-odds", parameters);
+    if (!fixture.id().equals(data.path("fixtureId").asText()))
+      throw new IllegalArgumentException("ID quote discordante");
+    var markets = catalog.load();
+    List<LabQuote> history = new ArrayList<>();
+    data.required("bookmakers")
+        .fields()
+        .forEachRemaining(
+            book ->
+                book.getValue()
+                    .path("markets")
+                    .fields()
+                    .forEachRemaining(
+                        entry -> {
+                          var market = markets.get(entry.getKey());
+                          if (market == null || market.playerProp()) return;
+                          entry
+                              .getValue()
+                              .path("outcomes")
+                              .fields()
+                              .forEachRemaining(
+                                  outcome -> {
+                                    if (!market.outcomes().containsKey(outcome.getKey())) return;
+                                    List<PriceUpdate> updates = new ArrayList<>();
+                                    for (var row : outcome.getValue().path("players").path("0")) {
+                                      if (!row.path("price").isNumber()
+                                          || !row.path("active").isBoolean())
+                                        throw new IllegalArgumentException("Prezzo/stato assente");
+                                      updates.add(
+                                          new PriceUpdate(
+                                              Instant.parse(row.required("createdAt").asText()),
+                                              row.get("price").decimalValue(),
+                                              row.get("active").asBoolean()));
+                                    }
+                                    if (!updates.isEmpty())
+                                      history.add(
+                                          new LabQuote(
+                                              fixture.id(),
+                                              book.getKey(),
+                                              market,
+                                              outcome.getKey(),
+                                              market.outcomes().get(outcome.getKey()),
+                                              updates));
+                                  });
+                        }));
+    return List.copyOf(history);
   }
 }

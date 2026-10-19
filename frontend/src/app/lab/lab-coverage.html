@@ -1,0 +1,115 @@
+<h2 class="h4">Copertura dei campionati</h2>
+<p class="text-secondary">
+  Il catalogo comune indica un abbinamento fra le fonti. La presenza effettiva di risultati HT/FT e
+  quote viene misurata separatamente. Nessuna scommessa sulle coppe.
+</p>
+<div class="table-responsive card mb-5">
+  <table class="table table-hover align-middle mb-0">
+    <thead>
+      <tr>
+        <th scope="col">Paese / campionato</th>
+        <th scope="col">Catalogo</th>
+        <th scope="col">Risultati HT/FT</th>
+        <th scope="col">Incontri con quote</th>
+        <th scope="col">Squadre/stagioni con 7 incontri</th>
+        <th scope="col">Periodo quote in archivio</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (c of state.coverage(); track c.id) {
+        @if (!c.cup) {
+          <tr>
+            <td>
+              <strong>{{ c.name }}</strong>
+              <div class="small text-secondary">{{ c.country }}</div>
+            </td>
+            <td>
+              {{
+                c.oddsTournamentId
+                  ? 'Comune'
+                  : c.status === 'AMBIGUO'
+                    ? 'Da verificare'
+                    : 'Non abbinato'
+              }}
+            </td>
+            <td>{{ c.complete }} / {{ c.matches }}</td>
+            <td>
+              {{ c.withOdds }}
+              <div class="small text-secondary">
+                {{ c.completeWithOdds }} con HT/FT · {{ c.unlinkedQuotes }} da abbinare
+              </div>
+            </td>
+            <td>{{ c.readyTeams }}</td>
+            <td class="small">
+              {{ c.firstOdds ? (c.firstOdds | date: 'dd/MM/yyyy') : '—' }}
+              @if (c.lastOdds) {
+                – {{ c.lastOdds | date: 'dd/MM/yyyy' }}
+              }
+            </td>
+          </tr>
+        }
+      }
+    </tbody>
+  </table>
+</div>
+<h2 class="h4">Statistiche disponibili all’istante selezionato</h2>
+<p class="text-secondary">
+  Le righe restano separate per competizione e stagione. Con la checkbox attiva compaiono anche le
+  statistiche delle coppe; il modello le usa come indicatori distinti.
+</p>
+<div class="table-responsive card">
+  <table class="table table-sm align-middle mb-0">
+    <thead>
+      <tr>
+        <th scope="col">Squadra</th>
+        <th scope="col">Competizione / stagione</th>
+        <th scope="col">Partite</th>
+        <th scope="col"><abbr title="Vittorie, pareggi, sconfitte">V / P / S</abbr></th>
+        <th scope="col">Punti</th>
+        <th scope="col">Gol fatti / subiti</th>
+        <th scope="col">Gol 1T</th>
+        <th scope="col">Gol 2T</th>
+        <th scope="col">Casa / trasferta</th>
+        <th scope="col">Forma</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (s of state.statistics(); track s.competitionId + ':' + s.season + ':' + s.team.teamId) {
+        <tr>
+          <td>{{ s.team.team }}</td>
+          <td>
+            {{ s.competition }} · {{ s.season }}
+            @if (s.cup) {
+              <span class="badge text-bg-light">Coppa</span>
+            }
+          </td>
+          <td>{{ s.team.played }}</td>
+          <td>{{ s.team.won }} / {{ s.team.drawn }} / {{ s.team.lost }}</td>
+          <td>{{ s.team.points }}</td>
+          <td>{{ s.team.goalsFor }} / {{ s.team.goalsAgainst }}</td>
+          <td>{{ s.team.firstHalfFor }} / {{ s.team.firstHalfAgainst }}</td>
+          <td>{{ s.team.secondHalfFor }} / {{ s.team.secondHalfAgainst }}</td>
+          <td>
+            <details>
+              <summary class="small">
+                {{ s.team.homePlayed }} / {{ s.team.awayPlayed }} partite
+              </summary>
+              <div class="small text-nowrap">
+                Casa: {{ s.team.homePoints }} punti · gol {{ s.team.homeGoalsFor }} /
+                {{ s.team.homeGoalsAgainst }}<br />Trasferta: {{ s.team.awayPoints }} punti · gol
+                {{ s.team.awayGoalsFor }} / {{ s.team.awayGoalsAgainst }}
+              </div>
+            </details>
+          </td>
+          <td class="font-monospace">{{ s.team.form }}</td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="10" class="p-4 text-secondary">
+            Nessuna statistica disponibile nel periodo selezionato.
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

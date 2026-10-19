@@ -68,7 +68,14 @@
         <th scope="col">Quota reale</th>
         <th scope="col">Prob. modello</th>
         <th scope="col">Prob. base</th>
-        <th scope="col">Valore atteso</th>
+        <th scope="col" [attr.aria-sort]="evSort()">
+          <button class="btn btn-link p-0 text-nowrap" (click)="sortByExpectedReturn()">
+            Valore atteso
+            <span aria-hidden="true">{{
+              evSort() === 'descending' ? '↓' : evSort() === 'ascending' ? '↑' : '↕'
+            }}</span>
+          </button>
+        </th>
         <th scope="col">Ultimo aggiornamento</th>
       </tr>
     </thead>

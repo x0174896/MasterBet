@@ -14,11 +14,25 @@ $oldEncoding = $env:PGCLIENTENCODING
 try {
     $env:PGPASSWORD = $settings['DB_PASSWORD']
     $env:PGCLIENTENCODING = 'UTF8'
-    $snapshotText = & (Join-Path $PostgresHome 'bin\psql.exe') -X -w -h 127.0.0.1 -p 5432 -U $settings['DB_USERNAME'] -d masterbet_local -t -A -c "SELECT payload FROM simulation_snapshot WHERE snapshot_id='eliteserien-2026-round7'"
+    $snapshotText = & (Join-Path $PostgresHome 'bin\psql.exe') -X -w -h 127.0.0.1 -p 5432 -U $settings['DB_USERNAME'] -d masterbet_local -t -A -c "SELECT payload FROM simulation_snapshot ORDER BY cutoff DESC LIMIT 1"
     if ($LASTEXITCODE -ne 0 -or !$snapshotText) { throw 'Export dello scenario non riuscito.' }
     $auditDir = Join-Path $projectRoot '.local\audit'
     [IO.Directory]::CreateDirectory($auditDir) | Out-Null
     [IO.File]::WriteAllText((Join-Path $auditDir 'snapshot.json'), ($snapshotText -join "`n"), [Text.UTF8Encoding]::new($false))
+    $rounds = & (Join-Path $PostgresHome 'bin\psql.exe') -X -w -h 127.0.0.1 -p 5432 -U $settings['DB_USERNAME'] -d masterbet_local -t -A -c "SELECT COALESCE(json_agg(COALESCE(p.payload,r.payload)::json ORDER BY r.cutoff),'[]'::json) FROM betting_round r LEFT JOIN betting_proposal p ON p.scenario_id=r.scenario_id"
+    if ($LASTEXITCODE -ne 0) { throw 'Export schedine non riuscito.' }
+    [IO.File]::WriteAllText((Join-Path $auditDir 'betting-rounds.json'), ($rounds -join "`n"), [Text.UTF8Encoding]::new($false))
+    $reveals = & (Join-Path $PostgresHome 'bin\psql.exe') -X -w -h 127.0.0.1 -p 5432 -U $settings['DB_USERNAME'] -d masterbet_local -t -A -c "SELECT COALESCE(json_agg(payload::json),'[]'::json) FROM betting_reveal"
+    if ($LASTEXITCODE -ne 0) { throw 'Export esiti non riuscito.' }
+    [IO.File]::WriteAllText((Join-Path $auditDir 'betting-reveals.json'), ($reveals -join "`n"), [Text.UTF8Encoding]::new($false))
+    $snapshots = & (Join-Path $PostgresHome 'bin\psql.exe') -X -w -h 127.0.0.1 -p 5432 -U $settings['DB_USERNAME'] -d masterbet_local -t -A -c "SELECT COALESCE(json_agg(payload::json ORDER BY cutoff),'[]'::json) FROM simulation_snapshot"
+    if ($LASTEXITCODE -ne 0) { throw 'Export storico snapshot non riuscito.' }
+    [IO.File]::WriteAllText((Join-Path $auditDir 'snapshots.json'), ($snapshots -join "`n"), [Text.UTF8Encoding]::new($false))
+    foreach ($revision in @('round','reveal')) {
+        $revisions = & (Join-Path $PostgresHome 'bin\psql.exe') -X -w -h 127.0.0.1 -p 5432 -U $settings['DB_USERNAME'] -d masterbet_local -t -A -c "SELECT COALESCE(json_agg(previous_payload::json),'[]'::json) FROM betting_${revision}_revision"
+        if ($LASTEXITCODE -ne 0) { throw "Export revisioni $revision non riuscito." }
+        [IO.File]::WriteAllText((Join-Path $auditDir "betting-$revision-revisions.json"), ($revisions -join "`n"), [Text.UTF8Encoding]::new($false))
+    }
     Write-Output 'Snapshot esportato in .local/audit/snapshot.json (escluso da Git).'
 } finally {
     $env:PGPASSWORD = $oldPassword

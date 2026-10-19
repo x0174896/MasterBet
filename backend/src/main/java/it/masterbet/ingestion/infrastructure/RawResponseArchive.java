@@ -62,9 +62,23 @@ public class RawResponseArchive {
               "body",
               body);
       Path destination = path(endpoint, parameters);
+      if (Files.exists(destination)) {
+        String previous = Files.readString(destination);
+        var prior = mapper.readTree(previous);
+        if (prior.path("sha256").asText().equals(hash(body))) return;
+        Path revisions = directory.resolve("revisions");
+        Files.createDirectories(revisions);
+        Path revision = revisions.resolve(hash(previous) + ".json");
+        if (!Files.exists(revision))
+          Files.writeString(revision, previous, StandardOpenOption.CREATE_NEW);
+      }
       Path temporary = Files.createTempFile(directory, "download-", ".tmp");
       Files.writeString(temporary, mapper.writeValueAsString(envelope));
-      Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE);
+      Files.move(
+          temporary,
+          destination,
+          StandardCopyOption.ATOMIC_MOVE,
+          StandardCopyOption.REPLACE_EXISTING);
     } catch (java.io.IOException e) {
       throw new IllegalStateException("Impossibile archiviare la risposta sorgente");
     }

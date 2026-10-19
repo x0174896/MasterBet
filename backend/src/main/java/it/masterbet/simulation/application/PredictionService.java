@@ -15,15 +15,18 @@ public class PredictionService {
   }
 
   public List<Prediction> predict(SimulationDataset data, ModelReport report) {
+    return predict(data, report, true);
+  }
+
+  public List<Prediction> predict(SimulationDataset data, ModelReport report, boolean cups) {
     List<PlayedMatch> past = new ArrayList<>(data.trainingHistory());
     past.addAll(data.leagueHistory());
     List<Prediction> predictions = new ArrayList<>();
     for (var f : data.targets()) {
       var model =
           new GoalProbabilities(
-              report
-                  .cupsModel()
-                  .predict(features.build(f, data.cutoff(), past, data.calendar(), true)));
+              (cups ? report.cupsModel() : report.leagueModel())
+                  .predict(features.build(f, data.cutoff(), past, data.calendar(), cups)));
       var baseline = new GoalProbabilities(features.baseline(f, data.cutoff(), past));
       for (var q : data.quotes())
         if (q.fixtureId().equals(f.id())) {
@@ -49,7 +52,8 @@ public class PredictionService {
                     1 / probability,
                     value,
                     value >= 0.05,
-                    "Poisson con calendario coppe; soglia indicativa EV +5%"));
+                    (cups ? "Poisson con calendario coppe" : "Poisson solo campionato")
+                        + "; soglia indicativa EV +5%"));
           }
         }
     }

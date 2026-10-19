@@ -1,0 +1,96 @@
+<h2 class="h4">Andamento del guadagno netto</h2>
+<p class="text-secondary">
+  Si parte da zero. Ogni punto è una singola conclusa: anche le partite contemporanee hanno punti
+  distinti. Le giocate future e gli spoiler non contribuiscono.
+</p>
+@if (state.workspace(); as w) {
+  <div class="row g-3 mb-4">
+    <div class="col-sm-4">
+      <div class="card card-body">
+        <small>Guadagno netto</small
+        ><strong class="fs-3" [class.text-danger]="w.net < 0">{{ w.net | currency: 'EUR' }}</strong>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="card card-body">
+        <small>Singole concluse</small><strong class="fs-3">{{ w.settled }}</strong>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="card card-body">
+        <small>Modalità delle statistiche</small
+        ><strong class="fs-5 py-2">{{
+          state.cups() ? 'Campionato + gol coppe' : 'Campionato'
+        }}</strong>
+      </div>
+    </div>
+  </div>
+  <div class="card card-body">
+    <div class="overflow-auto" tabindex="0" aria-label="Grafico scorrevole del netto per singola">
+      <svg
+        [attr.width]="width()"
+        height="320"
+        role="img"
+        aria-label="Guadagno netto cumulativo, un punto per ogni singola conclusa"
+      >
+        <line
+          x1="30"
+          [attr.x2]="width() - 20"
+          [attr.y1]="y(0)"
+          [attr.y2]="y(0)"
+          stroke="#aebdb5"
+          stroke-dasharray="4 4"
+        />
+        <text x="5" [attr.y]="y(0) - 8" fill="#64756f">0 €</text>
+        <path [attr.d]="path()" fill="none" stroke="#146d5a" stroke-width="2" />
+        @for (point of points(); track point.index) {
+          <circle
+            [attr.cx]="x(point.index)"
+            [attr.cy]="y(point.cumulative)"
+            r="3.5"
+            [attr.fill]="point.profit < 0 ? '#bb3948' : '#146d5a'"
+            (mouseenter)="focused.set(point)"
+            (click)="focused.set(point)"
+          >
+            <title>
+              Singola {{ point.index }} · {{ point.cumulative | currency: 'EUR' }} ·
+              {{ point.settledAt | date: 'dd/MM/yyyy HH:mm' }}
+            </title>
+          </circle>
+        }
+        <text x="40" y="310" fill="#64756f">
+          Ogni punto = una singola · disponibilità dell’esito, poi identificativo stabile
+        </text>
+      </svg>
+    </div>
+    @if (selected(); as point) {
+      <div class="d-flex align-items-center gap-3 border-top pt-3 mt-2" aria-live="polite">
+        <button
+          class="btn btn-sm btn-outline-secondary"
+          aria-label="Punto precedente"
+          (click)="move(-1)"
+          [disabled]="point.index === 0"
+        >
+          ←
+        </button>
+        <div>
+          <strong>Punto {{ point.index }} · {{ point.cumulative | currency: 'EUR' }}</strong>
+          <div class="small text-secondary">
+            {{ point.settledAt | date: 'dd/MM/yyyy HH:mm' }} · singola
+            {{ point.profit | currency: 'EUR' }}
+          </div>
+        </div>
+        <button
+          class="btn btn-sm btn-outline-secondary"
+          aria-label="Punto successivo"
+          (click)="move(1)"
+          [disabled]="point.index === points().length - 1"
+        >
+          →
+        </button>
+      </div>
+    }
+  </div>
+} @else {
+  <p class="alert alert-info">Seleziona un’elaborazione completa per visualizzare il grafico.</p>
+}

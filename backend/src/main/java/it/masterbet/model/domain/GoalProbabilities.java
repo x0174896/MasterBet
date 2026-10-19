@@ -1,6 +1,8 @@
 package it.masterbet.model.domain;
 
 import it.masterbet.odds.domain.QuotedOutcome;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.OptionalDouble;
 
 /**
@@ -10,6 +12,7 @@ import java.util.OptionalDouble;
 public class GoalProbabilities {
   private final double[] lambda;
   private double[][] halfFull;
+  private final Map<String, double[]> results = new HashMap<>();
 
   public GoalProbabilities(double[] lambda) {
     if (lambda.length != 4) throw new IllegalArgumentException("Quattro intensita richieste");
@@ -45,7 +48,8 @@ public class GoalProbabilities {
       case "1x2" -> {
         int r = resultIndex(outcome);
         if (r < 0) return OptionalDouble.empty();
-        p = result(h, a)[r];
+        final double home = h, away = a;
+        p = results.computeIfAbsent(period, key -> result(home, away))[r];
       }
       case "bothteamsscore" -> {
         p = (1 - Math.exp(-h)) * (1 - Math.exp(-a));
@@ -53,6 +57,7 @@ public class GoalProbabilities {
         else if (!outcome.equals("Yes")) return OptionalDouble.empty();
       }
       case "totals", "teamtotals-team1", "teamtotals-team2" -> {
+        if (m.line() == null) return OptionalDouble.empty();
         double line = m.line().doubleValue();
         if (line < 0 || Math.abs(line - Math.floor(line) - 0.5) > 1e-9)
           return OptionalDouble.empty();
@@ -97,21 +102,28 @@ public class GoalProbabilities {
 
   private double[] result(double home, double away) {
     double[] result = new double[3];
+    double[] hp = new double[65], ap = new double[65];
+    for (int n = 0; n <= 64; n++) {
+      hp[n] = poisson(home, n);
+      ap[n] = poisson(away, n);
+    }
     for (int h = 0; h <= 64; h++)
-      for (int a = 0; a <= 64; a++) result[index(h, a)] += poisson(home, h) * poisson(away, a);
+      for (int a = 0; a <= 64; a++) result[index(h, a)] += hp[h] * ap[a];
     return result;
   }
 
   private double[][] halfFull() {
     double[][] pmf = new double[4][33];
     for (int k = 0; k < 4; k++) for (int n = 0; n <= 32; n++) pmf[k][n] = poisson(lambda[k], n);
+    double[] difference = new double[65];
+    for (int h = 0; h <= 32; h++)
+      for (int a = 0; a <= 32; a++) difference[h - a + 32] += pmf[2][h] * pmf[3][a];
     double[][] result = new double[3][3];
     for (int h1 = 0; h1 <= 32; h1++)
       for (int a1 = 0; a1 <= 32; a1++)
-        for (int h2 = 0; h2 <= 32; h2++)
-          for (int a2 = 0; a2 <= 32; a2++)
-            result[index(h1, a1)][index(h1 + h2, a1 + a2)] +=
-                pmf[0][h1] * pmf[1][a1] * pmf[2][h2] * pmf[3][a2];
+        for (int d = -32; d <= 32; d++)
+          result[index(h1, a1)][index(h1 - a1 + d, 0)] +=
+              pmf[0][h1] * pmf[1][a1] * difference[d + 32];
     return result;
   }
 

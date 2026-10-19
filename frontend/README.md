@@ -1,6 +1,6 @@
 # Interfaccia MasterBet
 
-Angular 22.2.3, componenti standalone, signals, TypeScript strict e Bootstrap 5.3.8 con tema SCSS. Interfaccia in italiano, orari visualizzati in UTC.
+Angular 22.2.3, standalone, signals e Bootstrap 5.3.8/SCSS. Cinque pagine lazy: `/scommesse`, `/andamento`, `/campionati`, `/modello`, `/admin`. Orari nell'ora locale, API in UTC.
 
 ```powershell
 npm ci
@@ -9,8 +9,12 @@ npm run build
 npm test -- --watch=false
 ```
 
-`npm start` ascolta su `127.0.0.1:4201` e inoltra `/api/**` al backend locale sulla porta 8081. Il backend e lo scenario importato sono necessari. Non c'è una modalità mock applicativa.
+Frontend `127.0.0.1:4200`, proxy `/api/**` verso backend 8080. `dev-local.bat` apre le due console documentate in [setup.md](../setup.md). Nessuna modalità mock applicativa.
 
-`scenario-api` gestisce HTTP; `scenario-state` caricamenti, errori e annullamento delle richieste precedenti; `quote-table`, `statistics-panel` e `model-panel` presentano dati tipizzati. I mercati non modellati restano consultabili senza probabilità inventate. Soglie, bookmaker e timestamp sono sempre distinti dal valore stimato dal modello.
+`lab-api` contiene HTTP/DTO; `lab-state` condivide elaborazione, tempo, campionato e modalità, annullando richieste superate. `lab-shell` gestisce filtri/navigazione; le cinque pagine separano i contenuti. I componenti precedenti sono conservati per regressione, non instradati nell'app corrente.
 
-La guida completa è in [setup.md](../setup.md). Il contenuto di `dist/` è generato e ignorato. Non inserire la chiave OddsPapi nel frontend.
+Data e checkbox leggono `GET /api/lab/workspace`, senza download/addestramento. Proposte future in attesa anche dopo spoiler. Grafico del netto con punto iniziale zero e un punto per singola liquidabile, valori negativi, tooltip e pulsanti da tastiera. Paginazione a 50 proposte, nessun limite al totale.
+
+Admin con sessione e `X-MasterBet-Admin: 1` per scritture; prima password scelta localmente dall'utente, almeno 12 caratteri. Endpoint distinti per risultati, quote e calcolo, job persistenti e polling ogni cinque secondi solo dopo accesso. Nessuna chiamata diretta dal browser alle fonti né chiave nel frontend.
+
+Stub HTTP di test allineati a `/api/lab`; navigazione, checkbox, annullamento richieste, spoiler, grafico e admin coperti. Nessun `build:mock`. `dist/`, cache e dati privati ignorati da Git.

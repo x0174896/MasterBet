@@ -6,6 +6,22 @@ import org.springframework.web.bind.annotation.*;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+  @ExceptionHandler(it.masterbet.laboratory.domain.LabProcessConflict.class)
+  public ProblemDetail processConflict(it.masterbet.laboratory.domain.LabProcessConflict e) {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+  }
+
+  @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+  public ProblemDetail malformedBody() {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Richiesta JSON non valida");
+  }
+
+  @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+  public ProblemDetail conflict(org.springframework.web.server.ResponseStatusException e) {
+    return ProblemDetail.forStatusAndDetail(
+        e.getStatusCode(), e.getReason() == null ? "Richiesta non valida" : e.getReason());
+  }
+
   @ExceptionHandler(NoSuchElementException.class)
   public ProblemDetail missing(NoSuchElementException e) {
     return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());

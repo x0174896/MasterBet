@@ -8,6 +8,11 @@ public class PoissonTrainer {
   private static final double RIDGE = 0.5;
 
   public PoissonModel train(double[][] x, double[][] y) {
+    return train(x, y, null);
+  }
+
+  /** Previous-prefix coefficients accelerate the next fit without importing later observations. */
+  public PoissonModel train(double[][] x, double[][] y, PoissonModel initial) {
     if (x.length < 20 || x.length != y.length)
       throw new IllegalArgumentException("Servono almeno 20 osservazioni di addestramento");
     int n = x.length, p = x[0].length;
@@ -26,6 +31,14 @@ public class PoissonTrainer {
       for (var row : y) avg += row[k] / n;
       double[] w = weights[k];
       w[0] = Math.log(Math.max(0.05, avg));
+      if (initial != null && initial.means().length == p) {
+        w[0] = initial.weights()[k][0];
+        for (int j = 0; j < p; j++) {
+          w[0] +=
+              initial.weights()[k][j + 1] * (means[j] - initial.means()[j]) / initial.scales()[j];
+          w[j + 1] = initial.weights()[k][j + 1] * scales[j] / initial.scales()[j];
+        }
+      }
       for (int step = 0; step < 2000; step++) {
         double[] gradient = new double[p + 1];
         for (int i = 0; i < n; i++) {

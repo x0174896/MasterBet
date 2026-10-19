@@ -1,0 +1,91 @@
+<div class="row align-items-end g-3 mb-3">
+  <div class="col-sm-6 col-lg-4">
+    <label class="form-label" for="history-step">Filtra schedine per step</label>
+    <select
+      id="history-step"
+      class="form-select"
+      [ngModel]="step()"
+      (ngModelChange)="step.set($event)"
+    >
+      <option value="">Tutti gli step</option>
+      @for (id of steps(); track id) {
+        <option [value]="id">{{ stepLabel(id) }}</option>
+      }
+    </select>
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-outline-secondary" (click)="step.set('')" [disabled]="!step()">
+      Azzera filtro
+    </button>
+  </div>
+</div>
+<div class="table-responsive">
+  <table class="table">
+    <caption>
+      Solo schedine concluse al taglio dello scenario. Le puntate in attesa degli step successivi
+      sono escluse. I totali si riferiscono ai soli
+      {{
+        visible().length
+      }}
+      record visualizzati.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Step / schedina</th>
+        <th scope="col">Stato</th>
+        <th scope="col">Puntata</th>
+        <th scope="col">Ritorno</th>
+        <th scope="col">Netto</th>
+        <th scope="col">Risultati esatti</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of visible(); track row.scenarioId + '/' + row.slipId) {
+        <tr>
+          <td>{{ stepLabel(row.scenarioId) }} / {{ row.slipId }}</td>
+          <td>{{ row.status === 'WON' ? 'Vinta' : 'Persa' }}</td>
+          <td>{{ row.stake | currency: 'EUR' }}</td>
+          <td>{{ row.payout | currency: 'EUR' }}</td>
+          <td [class.text-danger]="row.profit < 0" [class.text-success]="row.profit > 0">
+            {{ row.profit | currency: 'EUR' }}
+          </td>
+          <td>
+            @if (showResults()) {
+              <app-slip-result
+                [scenario]="row.scenarioId"
+                [variant]="variant()"
+                [slip]="row.slipId"
+              />
+            }
+          </td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="6">Nessuna schedina conclusa per lo step selezionato.</td>
+        </tr>
+      }
+    </tbody>
+    <tfoot class="table-group-divider" aria-live="polite" aria-atomic="true">
+      <tr>
+        <th scope="row" colspan="2">Totale record visualizzati ({{ visible().length }})</th>
+        <td>
+          <small class="d-block">Totale puntato</small>
+          <strong>{{ totals().stake | currency: 'EUR' }}</strong>
+        </td>
+        <td>
+          <small class="d-block">Totale ritorno</small>
+          <strong>{{ totals().payout | currency: 'EUR' }}</strong>
+        </td>
+        <td>
+          <small class="d-block">Netto totale</small>
+          <strong
+            [class.text-danger]="totals().profit < 0"
+            [class.text-success]="totals().profit > 0"
+            >{{ totals().profit | currency: 'EUR' }}</strong
+          >
+        </td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>

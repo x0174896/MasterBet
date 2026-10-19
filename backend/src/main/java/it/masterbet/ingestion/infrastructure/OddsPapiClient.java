@@ -2,41 +2,44 @@ package it.masterbet.ingestion.infrastructure;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.*;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.*;
-import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class OddsPapiClient {
-  private final HttpClient http =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
   private final ObjectMapper mapper;
   private final RawResponseArchive archive;
-  private final String key;
+  private final OddsPapiHttpTransport transport;
   private final int reserve;
-  private final Map<String, Long> lastRequest = new HashMap<>();
   private Integer remaining;
 
   public OddsPapiClient(
       ObjectMapper mapper,
       RawResponseArchive archive,
-      @Value("${masterbet.odds-api-key}") String key,
+      OddsPapiHttpTransport transport,
       @Value("${masterbet.api-reserve}") int reserve) {
     this.mapper = mapper;
     this.archive = archive;
-    this.key = key;
+    this.transport = transport;
     this.reserve = reserve;
   }
 
   public synchronized JsonNode get(String endpoint, Map<String, String> parameters) {
+    return get(endpoint, parameters, false);
+  }
+
+  public synchronized JsonNode refresh(String endpoint, Map<String, String> parameters) {
+    return get(endpoint, parameters, true);
+  }
+
+  public synchronized JsonNode account() {
+    return request("account", Map.of());
+  }
+
+  private JsonNode get(String endpoint, Map<String, String> parameters, boolean refresh) {
     var cached = archive.read(endpoint, parameters);
-    if (cached.isPresent()) return cached.get();
+    if (!refresh && cached.isPresent()) return cached.get();
     if (remaining == null) {
       var account = request("account", Map.of());
       for (var subscription : account.path("subscriptions")) {
@@ -51,7 +54,7 @@ public class OddsPapiClient {
       }
       if (remaining == null) throw new IllegalStateException("Piano API non disponibile");
     }
-    if (remaining <= reserve)
+    if (!hasBudget(remaining, endpoint.equals("historical-odds") ? 0 : 1, reserve))
       throw new IllegalStateException(
           "Riserva API raggiunta. Importazione sospesa; archivio locale conservato.");
     if (!endpoint.equals("historical-odds")) remaining--;
@@ -59,52 +62,43 @@ public class OddsPapiClient {
     return response;
   }
 
+  /** Verifica preventivamente le sole richieste non presenti in cache; account non e fatturato. */
+  public synchronized void preflightFixtures(List<Map<String, String>> requests) {
+    long needed = requests.stream().filter(p -> archive.read("fixtures", p).isEmpty()).count();
+    if (needed == 0) return;
+    var account = request("account", Map.of());
+    remaining = null;
+    for (var s : account.path("subscriptions"))
+      if (s.path("is_active").asBoolean()) {
+        if (!s.path("price").isNull() && s.path("price").asDouble() > 0)
+          throw new IllegalStateException("Consentito solo piano gratuito");
+        remaining = s.path("request_limit").asInt() - s.path("request_count").asInt();
+      }
+    if (remaining == null || !hasBudget(remaining, needed, reserve))
+      throw new IllegalStateException(
+          "Quota gratuita insufficiente per completare lo step; cache conservata");
+  }
+
+  static boolean hasBudget(int remaining, long cost, int reserve) {
+    // Le quote storiche sono gratuite ma il provider richiede un saldo positivo.
+    return remaining > 0 && remaining - cost >= reserve;
+  }
+
   private JsonNode request(String endpoint, Map<String, String> parameters) {
-    if (key.isBlank()) throw new IllegalStateException("ODDSPAPI_KEY non configurata");
-    long interval =
-        endpoint.equals("historical-odds") ? 5200 : endpoint.equals("fixtures") ? 2200 : 1200;
-    long wait = interval - (System.currentTimeMillis() - lastRequest.getOrDefault(endpoint, 0L));
     try {
-      if (wait > 0) Thread.sleep(wait);
-      var query = new TreeMap<>(parameters);
-      query.put("apiKey", key);
-      String encoded =
-          query.entrySet().stream()
-              .map(
-                  e ->
-                      URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
-                          + "="
-                          + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
-              .collect(Collectors.joining("&"));
-      var request =
-          HttpRequest.newBuilder(
-                  URI.create("https://api.oddspapi.io/v4/" + endpoint + "?" + encoded))
-              .timeout(Duration.ofSeconds(60))
-              .header("Accept", "application/json")
-              .header("User-Agent", "MasterBet-local/0.1")
-              .GET()
-              .build();
-      lastRequest.put(endpoint, System.currentTimeMillis());
-      var response = http.send(request, HttpResponse.BodyHandlers.ofString());
-      if (response.statusCode() != 200)
-        throw new IllegalStateException(
-            "OddsPapi "
-                + endpoint
-                + ": HTTP "
-                + response.statusCode()
-                + ". Nessun dato sostituito o inventato.");
-      JsonNode data = mapper.readTree(response.body());
+      String body = transport.get(endpoint, parameters);
+      JsonNode data = mapper.readTree(body);
       if (data.has("error"))
         throw new IllegalStateException("OddsPapi ha restituito un errore su " + endpoint);
-      if (!endpoint.equals("account")) archive.save(endpoint, parameters, response.body());
-      System.out.println("Importazione OddsPapi: " + endpoint + " archiviato");
+      if (!endpoint.equals("account")) archive.save(endpoint, parameters, body);
+      org.slf4j.LoggerFactory.getLogger(OddsPapiClient.class)
+          .info(
+              "OddsPapi {}: {}",
+              endpoint,
+              endpoint.equals("account") ? "account verificato" : "risposta archiviata");
       return data;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException("Importazione interrotta");
     } catch (java.io.IOException e) {
-      throw new IllegalStateException(
-          "Connessione OddsPapi non riuscita su " + endpoint + "; verificare rete e certificati");
+      throw new IllegalStateException("Risposta JSON OddsPapi non valida su " + endpoint);
     }
   }
 }

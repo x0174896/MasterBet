@@ -1,14 +1,14 @@
 # MasterBet
 
-Laboratorio locale per ricostruire un campionato a una data passata, consultare quote realmente offerte allora e confrontarle con probabilità statistiche. Riprende l'idea del programma originale; il modello è nuovo e non pretende di riprodurne esattamente i suggerimenti.
+Laboratorio locale multicampionato: risultati HT/FT da Calcio.com, quote storiche OddsPapi, solo competizioni comuni. Sette precedenti per squadra, una migliore singola per incontro idoneo e confronto con/senza gol di coppa. Nessun invio di puntate.
 
-Prima versione: **Eliteserien 2026**, taglio **29 aprile 2026, ore 12:00 UTC** (14:00 in Italia). Sono disponibili 47 partite concluse e 1.998 esiti quotati per gli 8 incontri della settima giornata, dal 1 al 4 maggio. Include gol per tempo, risultati, classifica, calendario delle coppe e modello addestrato su un campione 2025.
+Download risultati, download quote e calcolo indipendenti. Riaddestramento settimanale, input/proposte congelati e futuro escluso. Grafico del netto da zero, un punto per singola liquidabile; spoiler senza effetti monetari.
 
-- Frontend Angular 22 e Bootstrap: `frontend/`.
-- Backend Java 25 e Spring Boot: `backend/`.
-- PostgreSQL locale dedicato; dati e chiavi esclusi da Git.
-- Downloader separati per calendario, risultati, catalogo mercati e quote storiche; interfacce sostituibili.
+Campagna 2026 in corso: 63 campionati abbinati nel catalogo, 62 con stagione pertinente. La copertura dei singoli incontri è distinta dal catalogo e visibile nell'amministrazione. Nessuna conclusione di redditività della campagna completa ancora disponibile.
 
-Avvio e verifiche in [setup.md](setup.md). Funzionalità e limiti in [PROJECT_FEATURES.md](PROJECT_FEATURES.md). Metodo e controlli sui dati in [docs/DATA_AND_MODEL.md](docs/DATA_AND_MODEL.md).
+- Java 25 / Spring Boot / PostgreSQL locale: `backend/`.
+- Angular 22 / Bootstrap, cinque pagine: `frontend/`.
+- Avvio **`dev-local.bat`**: frontend http://127.0.0.1:4200, backend http://127.0.0.1:8080. Chiudere le console già aperte prima di riavviare la nuova versione.
+- [Installazione e API](setup.md), [inventario verificato/limiti](PROJECT_FEATURES.md), [requisiti](docs/HISTORICAL_LAB_REQUIREMENTS.md), [metodo corrente](docs/HISTORICAL_LAB_METHOD.md).
 
-L'applicazione mostra un esperimento su dati storici. Non esegue scommesse e non dimostra una redditività. L'avanzamento alla giornata successiva e la liquidazione dei pronostici non fanno parte di questa prima versione.
+Credenziali, raw, backup e dati non pubblicati su Git. L'esperimento norvegese precedente rimane come riferimento storico, distinto dalla nuova campagna.

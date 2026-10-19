@@ -1,0 +1,99 @@
+<section class="page-intro lab-intro">
+  <div>
+    <p class="eyebrow">RICERCA · MULTICAMPIONATO</p>
+    <h1>Laboratorio storico</h1>
+    <p class="text-secondary mb-0">
+      Una singola per incontro idoneo. Due modalità da confrontare, dati conservati e calcolo
+      cronologico.
+    </p>
+  </div>
+  <button class="btn btn-outline-primary" (click)="state.refresh()" [disabled]="state.loading()">
+    Aggiorna archivio
+  </button>
+</section>
+<nav class="nav nav-tabs mb-4 flex-nowrap lab-nav" aria-label="Sezioni laboratorio">
+  <a class="nav-link" routerLink="/scommesse" routerLinkActive="active">Scommesse</a
+  ><a class="nav-link" routerLink="/andamento" routerLinkActive="active">Andamento</a
+  ><a class="nav-link" routerLink="/campionati" routerLinkActive="active"
+    >Campionati e statistiche</a
+  ><a class="nav-link" routerLink="/modello" routerLinkActive="active">Modello e pattern</a
+  ><a class="nav-link" routerLink="/admin" routerLinkActive="active">Amministrazione</a>
+</nav>
+<div class="card card-body mb-4">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label" for="lab-run">Elaborazione</label
+      ><select
+        id="lab-run"
+        class="form-select"
+        [value]="state.runId()"
+        (change)="state.setRun($any($event.target).value)"
+      >
+        <option value="">Nessuna elaborazione completa</option>
+        @for (run of state.runs(); track run.id) {
+          @if (run.status === 'COMPLETED') {
+            <option [value]="run.id">
+              {{ run.createdAt | date: 'dd/MM/yyyy HH:mm' }} ·
+              {{ run.config.mode === 'HISTORICAL' ? 'Test storico' : 'Operativo' }}
+            </option>
+          }
+        }
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label" for="lab-competition">Campionato</label
+      ><select
+        id="lab-competition"
+        class="form-select"
+        [value]="state.competition()"
+        (change)="state.setCompetition(+$any($event.target).value)"
+      >
+        <option value="0">Tutti i campionati comuni</option>
+        @for (c of state.coverage(); track c.id) {
+          @if (!c.cup && c.oddsTournamentId) {
+            <option [value]="c.id">{{ c.country }} · {{ c.name }}</option>
+          }
+        }
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label" for="lab-cursor">Istante simulato (ora locale)</label
+      ><input
+        id="lab-cursor"
+        class="form-control"
+        type="datetime-local"
+        [value]="state.localDate(state.cursor())"
+        [min]="state.localDate(state.workspace()?.from)"
+        [max]="state.localDate(state.workspace()?.to)"
+        [disabled]="
+          !state.workspace()?.from || state.workspace()?.run?.config?.mode === 'OPERATIONAL'
+        "
+        (change)="state.setCursor($any($event.target).value)"
+      />
+    </div>
+    <div class="col-12">
+      <div class="form-check">
+        <input
+          id="lab-cups"
+          class="form-check-input"
+          type="checkbox"
+          [checked]="state.cups()"
+          (change)="state.setCups($any($event.target).checked)"
+        /><label class="form-check-label fw-semibold" for="lab-cups"
+          >Includi anche gol e risultati delle coppe nelle statistiche del modello</label
+        >
+      </div>
+      <small class="text-secondary"
+        >Riposo, frequenza degli incontri e trasferte di coppa sono considerati in entrambe le
+        modalità. La checkbox mostra proposte e saldo dell’elaborazione corrispondente.</small
+      >
+    </div>
+  </div>
+</div>
+@if (state.error()) {
+  <div class="alert alert-danger" role="alert">{{ state.error() }}</div>
+}
+@if (state.loading()) {
+  <p role="status" class="text-secondary">Caricamento del laboratorio…</p>
+}
+<router-outlet />
