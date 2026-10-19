@@ -6,6 +6,8 @@ import java.util.*;
 
 /** One-to-one identities supported by names or repeated fixtures with known opponents. */
 public final class FixtureIdentityResolver {
+  public static final String VERSION = "fixture-identities-v2";
+
   public record Result(Map<String, Fixture> matches, Map<String, List<String>> evidence) {}
 
   private record Team(String season, long id) {}
@@ -136,8 +138,8 @@ public final class FixtureIdentityResolver {
     Team team = new Team(m.season(), home ? f.homeId() : f.awayId());
     long id = home ? p.homeId() : p.awayId();
     if (identities.containsKey(team)) return identities.get(team) == id;
-    String a = SourceIdentity.team(home ? f.home() : f.away());
-    String b = SourceIdentity.team(home ? p.home() : p.away());
+    String a = SourceIdentity.team(home ? f.home() : f.away(), f.tournamentId());
+    String b = SourceIdentity.team(home ? p.home() : p.away(), f.tournamentId());
     return !a.isBlank() && a.equals(b);
   }
 

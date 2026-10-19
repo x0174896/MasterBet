@@ -42,6 +42,8 @@ I download singoli restano indipendenti. La campagna li coordina in sei fasi seq
 
 Le corrispondenze sconosciute possono essere ricavate solo da almeno due incontri in date differenti con avversari diversi già riconosciuti, nello stesso campionato/stagione e con associazione uno-a-uno. Nessuna similarità dei nomi o risultato della partita partecipa alla decisione. Prove e versioni sono conservate, l'unione delle quote provvisorie è transazionale. Campionati privi di risultati HT/FT o di quote effettivamente abbinate sono esclusi anche dall'addestramento; incontri dubbi restano in archivio senza proposte forzate.
 
+Gli alias verificati sono limitati al campionato di provenienza. Un nome provider senza suffisso femminile può essere riconosciuto nei tre campionati femminili già confermati dal catalogo, senza confonderlo con una prima squadra maschile o una riserva. Una nuova versione delle regole ripete la riconciliazione alla ripresa, mantenendo i checkpoint dei download; la riconciliazione finale resta automatica prima del calcolo.
+
 Se la fonte non espone giornate numerate viene verificato il calendario senza `roundId`. Questo recupera la MLS 2026. Canadian Soccer League 2026 è vuota anche da questo percorso, quindi indisponibile per il test verificato; nessun risultato è ricostruito o sostituito.
 
 [Calendari OddsPapi](https://oddspapi.io/en/docs/get-fixtures): intervalli estesi per torneo. [Quote storiche](https://oddspapi.io/en/docs/get-historical-odds): storico da gennaio 2026, attesa minima cinque secondi. Non garantiscono dati per ogni incontro: lacune riscontrate realmente. Nessun piano a pagamento, nuovo account o download dei risultati gol OddsPapi è avviato dal laboratorio.
