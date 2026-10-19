@@ -8,6 +8,10 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class FixtureMatcher {
+  public FixtureIdentityResolver.Result align(List<LabMatch> official, List<Fixture> candidates) {
+    return new FixtureIdentityResolver().resolve(official, candidates);
+  }
+
   public Optional<Fixture> match(LabMatch official, List<Fixture> candidates) {
     var f = official.fixture();
     var matches =

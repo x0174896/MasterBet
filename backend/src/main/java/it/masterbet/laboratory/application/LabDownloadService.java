@@ -93,52 +93,80 @@ public class LabDownloadService {
       if (!seasonOverlaps(season, seasonFrom, request.to())) continue;
       try {
         var rounds = calcio.rounds(c, season, true);
+        if (rounds.isEmpty()) {
+          var rows = calcio.schedule(c, season, true);
+          if (rows.isEmpty()) {
+            p.warning(
+                "GAP: "
+                    + c.slug()
+                    + " "
+                    + season
+                    + ": calendario fonte vuoto anche senza giornata");
+          }
+          importRows(
+              c, season, "Calendario senza giornate", rows, request, cups, teams, seasonFrom, p);
+        }
         for (var round : rounds) {
           p.update(c.name() + " " + season + " / giornata " + round.path("roundName").asText());
           var rows = calcio.schedule(c, season, round.required("roundId").asLong(), true);
-          for (var row : rows) {
-            Instant scheduled = Instant.parse(row.required("date").asText());
-            if (cups && scheduled.isBefore(seasonFrom.atStartOfDay().toInstant(ZoneOffset.UTC)))
-              continue;
-            if (scheduled.isAfter(
-                request.to().plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC))) continue;
-            if (cups
-                && !teams.contains(row.path("home").path("id").asLong())
-                && !teams.contains(row.path("away").path("id").asLong())) continue;
-            String id = "calcio:" + row.required("id").asLong();
-            var old = repo.match(id);
-            if (old.isPresent() && old.get().score() != null && !request.refresh()) {
-              if (!cups) {
-                teams.add(old.get().fixture().homeId());
-                teams.add(old.get().fixture().awayId());
-              }
-              continue;
-            }
-            try {
-              var value =
-                  calcio.detail(
-                      c,
-                      season,
-                      round.path("roundName").asText(),
-                      row,
-                      request.refresh() || old.isPresent());
-              if (old.isPresent() && old.get().oddsFixtureId() != null)
-                value = value.linked(old.get().oddsFixtureId());
-              repo.save(value);
-              if (!cups) {
-                teams.add(value.fixture().homeId());
-                teams.add(value.fixture().awayId());
-              }
-              if (value.fixture().finishedBefore(Instant.now()) && value.score() == null)
-                p.error(id + ": HT/FT mancanti, escluso dai risultati");
-              p.item(c.name() + " / " + value.fixture().home() + " - " + value.fixture().away());
-            } catch (Exception e) {
-              p.error(id + ": " + LabJobs.safe(e));
-            }
-          }
+          importRows(
+              c,
+              season,
+              round.path("roundName").asText(),
+              rows,
+              request,
+              cups,
+              teams,
+              seasonFrom,
+              p);
         }
       } catch (Exception e) {
         p.error(c.slug() + " " + season + ": " + LabJobs.safe(e));
+      }
+    }
+  }
+
+  private void importRows(
+      LabCompetition c,
+      String season,
+      String round,
+      com.fasterxml.jackson.databind.JsonNode rows,
+      LabDownloadRequest request,
+      boolean cups,
+      Set<Long> teams,
+      LocalDate seasonFrom,
+      LabJobs.Progress p) {
+    for (var row : rows) {
+      Instant scheduled = Instant.parse(row.required("date").asText());
+      if (cups && scheduled.isBefore(seasonFrom.atStartOfDay().toInstant(ZoneOffset.UTC))) continue;
+      if (scheduled.isAfter(request.to().plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)))
+        continue;
+      if (cups
+          && !teams.contains(row.path("home").path("id").asLong())
+          && !teams.contains(row.path("away").path("id").asLong())) continue;
+      String id = "calcio:" + row.required("id").asLong();
+      var old = repo.match(id);
+      if (old.isPresent() && old.get().score() != null && !request.refresh()) {
+        if (!cups) {
+          teams.add(old.get().fixture().homeId());
+          teams.add(old.get().fixture().awayId());
+        }
+        continue;
+      }
+      try {
+        var value = calcio.detail(c, season, round, row, request.refresh() || old.isPresent());
+        if (old.isPresent() && old.get().oddsFixtureId() != null)
+          value = value.linked(old.get().oddsFixtureId());
+        repo.save(value);
+        if (!cups) {
+          teams.add(value.fixture().homeId());
+          teams.add(value.fixture().awayId());
+        }
+        if (value.fixture().finishedBefore(Instant.now()) && value.score() == null)
+          p.warning("GAP: " + id + ": HT/FT mancanti, escluso dai risultati");
+        p.item(c.name() + " / " + value.fixture().home() + " - " + value.fixture().away());
+      } catch (Exception e) {
+        p.error(id + ": " + LabJobs.safe(e));
       }
     }
   }
@@ -154,25 +182,7 @@ public class LabDownloadService {
         p.update("Calendario OddsPapi: " + competition.name());
         List<Fixture> provider;
         try {
-          provider =
-              request.refresh()
-                  ? parseFixtures(
-                      odds.refresh(
-                          "fixtures",
-                          Map.of(
-                              "tournamentId",
-                              competition.oddsTournamentId().toString(),
-                              "from",
-                              from.toString(),
-                              "to",
-                              to.toString())))
-                  : fixtures.tournament(competition.oddsTournamentId(), from, to);
-          if (provider.stream().anyMatch(f -> f.tournamentId() != competition.oddsTournamentId()))
-            throw new IllegalArgumentException("Calendario di un campionato differente");
-          provider =
-              provider.stream()
-                  .filter(f -> !f.kickoff().isBefore(from) && f.kickoff().isBefore(to))
-                  .toList();
+          provider = calendar(competition, request);
         } catch (Exception e) {
           p.error(competition.slug() + ": " + LabJobs.safe(e));
           if (fatal(e)) throw e;
@@ -183,25 +193,32 @@ public class LabDownloadService {
                 .filter(
                     m ->
                         !m.cup()
+                            && !m.fixture().id().startsWith("odds:")
                             && m.fixture().tournamentId() == competition.id()
                             && !m.fixture().kickoff().isBefore(from)
                             && m.fixture().kickoff().isBefore(to))
                 .toList();
+        var alignment = fixtureMatcher.align(eligible, provider);
         // L'ordine dei download resta libero: gli ID OddsPapi vengono acquisiti anche senza HT/FT.
         Set<String> acquired = new HashSet<>();
         for (var match : eligible) {
           if (match.fixture().id().startsWith("odds:")) continue;
           try {
-            var linked = fixtureMatcher.match(match, provider);
+            var linked = Optional.ofNullable(alignment.matches().get(match.fixture().id()));
             if (linked.isEmpty()) {
-              p.error(match.fixture().id() + ": nessun abbinamento calendario univoco");
+              p.warning("GAP: " + match.fixture().id() + ": nessun abbinamento calendario univoco");
               continue;
             }
             Fixture f = linked.get();
             if (!acquired.add(f.id()))
               throw new IllegalArgumentException(
                   "Identificativo provider associato a piu incontri");
-            repo.save(match.linked(f));
+            repo.link(
+                match,
+                f,
+                alignment
+                    .evidence()
+                    .getOrDefault(match.fixture().id(), List.of("Nomi verificati")));
             if (alreadyImported(f, request)) {
               p.item("Quote gia importate o assenza gia verificata: " + f.id());
               continue;
@@ -274,6 +291,29 @@ public class LabDownloadService {
             .isPresent();
   }
 
+  public List<Fixture> calendar(LabCompetition competition, LabDownloadRequest request) {
+    Instant from = request.from().atStartOfDay().toInstant(ZoneOffset.UTC);
+    Instant to = request.to().plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+    var provider =
+        request.refresh()
+            ? parseFixtures(
+                odds.refresh(
+                    "fixtures",
+                    Map.of(
+                        "tournamentId",
+                        competition.oddsTournamentId().toString(),
+                        "from",
+                        from.toString(),
+                        "to",
+                        to.toString())))
+            : fixtures.tournament(competition.oddsTournamentId(), from, to);
+    if (provider.stream().anyMatch(f -> f.tournamentId() != competition.oddsTournamentId()))
+      throw new IllegalArgumentException("Calendario di un campionato differente");
+    return provider.stream()
+        .filter(f -> !f.kickoff().isBefore(from) && f.kickoff().isBefore(to))
+        .toList();
+  }
+
   private int importHistory(
       Fixture fixture, String targetId, LabDownloadRequest request, LabJobs.Progress progress) {
     var history = history(fixture, request, progress);
@@ -300,7 +340,7 @@ public class LabDownloadService {
     } catch (OddsPapiResponseException e) {
       if (e.status() == 404) {
         checkpoints.save(fixture.id(), request.bookmakers(), "NO_DATA");
-        progress.error(
+        progress.warning(
             fixture.id()
                 + ": archivio quote assente per i bookmaker richiesti (404); ripetibile con"
                 + " aggiornamento forzato");
@@ -330,7 +370,7 @@ public class LabDownloadService {
     return List.copyOf(list);
   }
 
-  private List<LabCompetition> selected(LabDownloadRequest r) {
+  public List<LabCompetition> selected(LabDownloadRequest r) {
     return repo.competitions().stream()
         .filter(
             c ->

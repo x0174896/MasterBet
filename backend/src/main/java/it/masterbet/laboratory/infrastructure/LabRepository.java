@@ -147,10 +147,12 @@ public class LabRepository {
               .filter(
                   m ->
                       m.fixture().tournamentId() == official.fixture().tournamentId()
-                          && SourceIdentity.team(m.fixture().home())
-                              .equals(SourceIdentity.team(official.fixture().home()))
-                          && SourceIdentity.team(m.fixture().away())
-                              .equals(SourceIdentity.team(official.fixture().away()))
+                          && (official.oddsFixtureId() != null
+                                  && official.oddsFixtureId().equals(m.oddsFixtureId())
+                              || SourceIdentity.team(m.fixture().home())
+                                      .equals(SourceIdentity.team(official.fixture().home()))
+                                  && SourceIdentity.team(m.fixture().away())
+                                      .equals(SourceIdentity.team(official.fixture().away())))
                           && Math.abs(
                                   java.time.Duration.between(
                                           m.fixture().kickoff(), official.fixture().kickoff())
@@ -180,14 +182,20 @@ public class LabRepository {
                 "SELECT payload FROM lab_quote WHERE fixture_id=?",
                 (r, n) -> read(r.getString(1), LabQuote.class),
                 stub.fixture().id())) {
-          save(
-              new LabQuote(
-                  value.fixture().id(),
-                  q.bookmaker(),
-                  q.market(),
-                  q.outcomeId(),
-                  q.outcome(),
-                  q.updates()));
+          {
+            archivePrevious(
+                "quote-source",
+                RawResponseArchive.hash(q.key()),
+                "SELECT payload FROM lab_quote WHERE id=?");
+            save(
+                new LabQuote(
+                    value.fixture().id(),
+                    q.bookmaker(),
+                    q.market(),
+                    q.outcomeId(),
+                    q.outcome(),
+                    q.updates()));
+          }
         }
         archivePrevious("match", stub.fixture().id(), "SELECT payload FROM lab_match WHERE id=?");
         jdbc.update("DELETE FROM lab_quote WHERE fixture_id=?", stub.fixture().id());
@@ -242,6 +250,49 @@ public class LabRepository {
           value.fixture().kickoff().toString(),
           value.cup(),
           value.score() != null,
+          payload);
+  }
+
+  @Transactional
+  public synchronized void link(
+      LabMatch official, it.masterbet.football.domain.Fixture provider, List<String> evidence) {
+    if (Math.abs(
+            java.time.Duration.between(official.fixture().kickoff(), provider.kickoff())
+                .toSeconds())
+        > 7200) throw new IllegalArgumentException("Data provider discordante");
+    save(official.linked(provider));
+    String payload =
+        json(
+            Map.of(
+                "official",
+                official.fixture(),
+                "provider",
+                provider,
+                "sourceHash",
+                official.sourceHash(),
+                "evidence",
+                evidence));
+    archivePrevious(
+        "alignment",
+        official.fixture().id(),
+        "SELECT payload FROM lab_fixture_alignment WHERE official_id=?");
+    if (jdbc.update(
+            "UPDATE lab_fixture_alignment SET"
+                + " provider_id=?,competition_id=?,season_name=?,payload=? WHERE official_id=?",
+            provider.id(),
+            official.fixture().tournamentId(),
+            official.season(),
+            payload,
+            official.fixture().id())
+        == 0)
+      jdbc.update(
+          "INSERT INTO"
+              + " lab_fixture_alignment(official_id,provider_id,competition_id,season_name,payload)"
+              + " VALUES(?,?,?,?,?)",
+          official.fixture().id(),
+          provider.id(),
+          official.fixture().tournamentId(),
+          official.season(),
           payload);
   }
 

@@ -14,18 +14,21 @@ public class LabCommand implements ApplicationRunner {
   private final LabSimulationService simulation;
   private final ConfigurableApplicationContext context;
   private final LabLegacyReset reset;
+  private final LabCampaignService campaign;
 
   public LabCommand(
       LabJobs jobs,
       LabDownloadService downloads,
       LabSimulationService simulation,
       ConfigurableApplicationContext context,
-      LabLegacyReset reset) {
+      LabLegacyReset reset,
+      LabCampaignService campaign) {
     this.jobs = jobs;
     this.downloads = downloads;
     this.simulation = simulation;
     this.context = context;
     this.reset = reset;
+    this.campaign = campaign;
   }
 
   @Override
@@ -49,37 +52,12 @@ public class LabCommand implements ApplicationRunner {
     var request =
         new LabDownloadRequest(competitions, from, to, null, args.containsOption("lab-refresh"));
     if (action.equals("campaign")) {
-      var results = jobs.start("results", downloads.results(request));
-      var quotes = jobs.start("quotes", downloads.quotes(request));
-      var resultsStatus = jobs.await(results.id());
-      var quoteStatus = jobs.await(quotes.id());
-      System.out.println(
-          "MASTERBET_LAB_DOWNLOADS risultati="
-              + resultsStatus.status()
-              + " quote="
-              + quoteStatus.status());
-      if (!Set.of("SUCCEEDED", "PARTIAL").contains(resultsStatus.status())
-          || !Set.of("SUCCEEDED", "PARTIAL").contains(quoteStatus.status())) {
-        context.close();
-        throw new IllegalStateException(
-            "MASTERBET_LAB_CAMPAIGN_DOWNLOAD_FAILED: consultare i job persistiti");
-      }
-      if (Set.of("SUCCEEDED", "PARTIAL").contains(resultsStatus.status())
-          && Set.of("SUCCEEDED", "PARTIAL").contains(quoteStatus.status())) {
-        var calculated =
-            jobs.blocking(
-                "calculate",
-                simulation.calculate(
-                    new LabRunConfig(
-                        request.from(), request.to(), competitions, null, "HISTORICAL")));
-        System.out.println("MASTERBET_LAB_CAMPAIGN " + calculated.status());
-        if (!calculated.status().equals("SUCCEEDED")) {
-          context.close();
-          throw new IllegalStateException(
-              "MASTERBET_LAB_CALCULATION_FAILED: consultare i job persistiti");
-        }
-      }
+      var state = jobs.blocking("campaign", campaign.run(request, null));
+      System.out.println("MASTERBET_LAB_CAMPAIGN " + state.status());
       context.close();
+      if (!Set.of("SUCCEEDED", "PARTIAL").contains(state.status()))
+        throw new IllegalStateException(
+            "MASTERBET_LAB_CAMPAIGN_FAILED: consultare i job persistiti");
       return;
     }
     var operation =

@@ -44,6 +44,16 @@ public class CalcioSource {
         refresh);
   }
 
+  /** Roundless competitions, including MLS, expose fixtures without a round parameter. */
+  public JsonNode schedule(LabCompetition competition, String season, boolean refresh) {
+    return json(
+        "https://api.calcio.com/api/schedule?league="
+            + competition.id()
+            + "&season="
+            + encode(season),
+        refresh);
+  }
+
   public LabMatch detail(
       LabCompetition competition, String season, String round, JsonNode row, boolean refresh) {
     long id = row.required("id").asLong();

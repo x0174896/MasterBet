@@ -18,6 +18,7 @@ public class LabController {
   private final LabSimulationService simulation;
   private final LabAdminAccess access;
   private final LabLegacyReset reset;
+  private final LabCampaignService campaign;
 
   public LabController(
       LabQueryService query,
@@ -26,7 +27,8 @@ public class LabController {
       LabDownloadService downloads,
       LabSimulationService simulation,
       LabAdminAccess access,
-      LabLegacyReset reset) {
+      LabLegacyReset reset,
+      LabCampaignService campaign) {
     this.query = query;
     this.runs = runs;
     this.jobs = jobs;
@@ -34,6 +36,7 @@ public class LabController {
     this.simulation = simulation;
     this.access = access;
     this.reset = reset;
+    this.campaign = campaign;
   }
 
   @GetMapping("/coverage")
@@ -121,6 +124,16 @@ public class LabController {
   public LabJobs.Status calculate(@RequestBody LabRunConfig body, HttpServletRequest request) {
     check(request);
     return jobs.start("calculate", simulation.calculate(body));
+  }
+
+  public record CampaignRequest(LabDownloadRequest download, java.math.BigDecimal unitProfit) {}
+
+  @PostMapping("/admin/campaign")
+  public LabJobs.Status campaign(@RequestBody CampaignRequest body, HttpServletRequest request) {
+    check(request);
+    if (body.download() == null)
+      throw new IllegalArgumentException("Configurazione download mancante");
+    return jobs.start("campaign", campaign.run(body.download(), body.unitProfit()));
   }
 
   @PostMapping("/admin/reset-legacy")

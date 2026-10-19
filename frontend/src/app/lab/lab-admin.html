@@ -123,7 +123,7 @@
           </p>
           <button
             class="btn btn-outline-primary mt-auto"
-            [disabled]="busy() || running('catalog')"
+            [disabled]="busy() || running('campaign') || running('catalog')"
             (click)="start('catalog')"
           >
             Aggiorna catalogo
@@ -140,7 +140,7 @@
           </p>
           <button
             class="btn btn-outline-primary mt-auto"
-            [disabled]="busy() || running('results')"
+            [disabled]="busy() || running('campaign') || running('results')"
             (click)="start('results')"
           >
             Scarica risultati
@@ -157,13 +157,28 @@
           </p>
           <button
             class="btn btn-outline-primary mt-auto"
-            [disabled]="busy() || running('quotes')"
+            [disabled]="busy() || running('campaign') || running('quotes')"
             (click)="start('quotes')"
           >
             Scarica quote
           </button>
         </article>
       </div>
+    </div>
+    <div class="card card-body mb-4">
+      <h3 class="h5">Campagna automatica</h3>
+      <p class="small text-secondary">
+        Completa i risultati, verifica gli abbinamenti, completa le quote e controlla i dati prima
+        di addestrare il modello. Le fasi completate, i risultati e le quote già importate vengono
+        riutilizzati. I campionati privi di dati sufficienti restano segnalati ed esclusi.
+      </p>
+      <button
+        class="btn btn-primary"
+        [disabled]="busy() || jobs().some(jobRunning)"
+        (click)="start('campaign')"
+      >
+        Avvia campagna automatica
+      </button>
     </div>
     <div class="card card-body mb-4">
       <h3 class="h5">Calcola entrambe le modalità</h3>
@@ -195,7 +210,15 @@
         <div class="col-md-5">
           <button
             class="btn btn-primary w-100"
-            [disabled]="busy() || running('calculate') || running('results') || running('quotes')"
+            [disabled]="
+              busy() ||
+              running('campaign') ||
+              running('calculate') ||
+              running('results') ||
+              running('quotes') ||
+              running('reconcile') ||
+              running('validate')
+            "
             (click)="start('calculate')"
           >
             Avvia elaborazione completa
@@ -211,15 +234,7 @@
     @for (job of jobs(); track job.id) {
       <article class="card card-body mb-3">
         <div class="d-flex justify-content-between">
-          <strong>{{
-            job.kind === 'results'
-              ? 'Risultati'
-              : job.kind === 'quotes'
-                ? 'Quote'
-                : job.kind === 'calculate'
-                  ? 'Elaborazione'
-                  : 'Catalogo'
-          }}</strong
+          <strong>{{ jobLabel(job.kind) }}</strong
           ><span
             class="badge"
             [class.text-bg-primary]="job.status === 'RUNNING'"

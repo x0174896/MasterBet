@@ -17,4 +17,6 @@ Data e checkbox leggono `GET /api/lab/workspace`, senza download/addestramento. 
 
 Admin con sessione e `X-MasterBet-Admin: 1` per scritture; prima password scelta localmente dall'utente, almeno 12 caratteri. Endpoint distinti per risultati, quote e calcolo, job persistenti e polling ogni cinque secondi solo dopo accesso. Nessuna chiamata diretta dal browser alle fonti né chiave nel frontend.
 
+Il pulsante «Avvia campagna automatica» usa `POST /api/lab/admin/campaign` con `{ download, unitProfit }`: risultati → abbinamenti → quote → abbinamenti finali → controlli → calcolo. I job delle fasi sono visibili nell'elenco; durante la campagna i comandi incompatibili sono disabilitati. La ripetizione della stessa configurazione riusa archivi e checkpoint; gli errori tecnici fermano le fasi successive. Restano disponibili i download indipendenti.
+
 Stub HTTP di test allineati a `/api/lab`; navigazione, checkbox, annullamento richieste, spoiler, grafico e admin coperti. Nessun `build:mock`. `dist/`, cache e dati privati ignorati da Git.

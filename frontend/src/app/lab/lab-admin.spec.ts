@@ -53,4 +53,42 @@ describe('Amministrazione riservata', () => {
     expect(admin.password).toBe('');
     fixture.destroy();
   });
+  it('avvia la campagna con periodo, bookmaker e utile scelti e blocca i comandi durante la campagna', async () => {
+    const fixture = TestBed.createComponent(LabAdmin);
+    const admin = fixture.componentInstance;
+    http.expectOne('/api/lab/admin/session').flush({ configured: true, authenticated: true });
+    http.expectOne('/api/lab/admin/jobs').flush([]);
+    admin.unitProfit = 7;
+    admin.start('campaign');
+    const request = http.expectOne('/api/lab/admin/campaign');
+    expect(request.request.headers.get('X-MasterBet-Admin')).toBe('1');
+    expect(request.request.body.unitProfit).toBe(7);
+    expect(request.request.body.download.bookmakers).toEqual(['unibet', 'pinnacle', 'bet365']);
+    request.flush({});
+    http
+      .expectOne('/api/lab/admin/jobs')
+      .flush([
+        {
+          id: 'flow',
+          kind: 'campaign',
+          status: 'RUNNING',
+          completed: 1,
+          total: 6,
+          message: 'Fase abbinamenti',
+          updatedAt: '2026-10-19T12:00:00Z',
+          errors: [],
+        },
+      ]);
+    await fixture.whenStable();
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
+    expect(buttons.find((b) => b.textContent?.includes('Scarica risultati'))?.disabled).toBe(true);
+    expect(
+      buttons.find((b) => b.textContent?.includes('Avvia campagna automatica'))?.disabled,
+    ).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Campagna automatica');
+    expect(admin.jobLabel('reconcile')).toBe('Abbinamenti');
+    fixture.destroy();
+  });
 });

@@ -22,6 +22,7 @@ public class LabSimulationService {
   private final LabRunRepository runs;
   private final PoissonTrainer trainer;
   private final ProfitTargetStaking staking;
+  private final LabDataValidation validation;
   private final LabFeatures features = new LabFeatures();
   private final LabPatternMiner patterns = new LabPatternMiner();
 
@@ -29,17 +30,20 @@ public class LabSimulationService {
       LabRepository source,
       LabRunRepository runs,
       PoissonTrainer trainer,
-      ProfitTargetStaking staking) {
+      ProfitTargetStaking staking,
+      LabDataValidation validation) {
     this.source = source;
     this.runs = runs;
     this.trainer = trainer;
     this.staking = staking;
+    this.validation = validation;
   }
 
   public Consumer<LabJobs.Progress> calculate(LabRunConfig config) {
     return progress -> {
       String id = UUID.randomUUID().toString();
       source.reconcile();
+      var validated = new HashSet<>(validation.verify(config).eligible());
       Map<Integer, String> competitionNames = new HashMap<>();
       source.competitions().forEach(c -> competitionNames.put(c.id(), c.name()));
       var common =
@@ -47,6 +51,7 @@ public class LabSimulationService {
               .filter(
                   c ->
                       !c.cup()
+                          && validated.contains(c.id())
                           && c.oddsTournamentId() != null
                           && (config.competitionIds().isEmpty()
                               || config.competitionIds().contains(c.id())))
