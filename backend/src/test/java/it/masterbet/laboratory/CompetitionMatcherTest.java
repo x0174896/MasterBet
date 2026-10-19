@@ -10,6 +10,31 @@ import org.junit.jupiter.api.Test;
 
 class CompetitionMatcherTest {
   @Test
+  void archivedLeytonOrientSpellingMatchesOnlyTheSameOpponentAndTime() {
+    var at = java.time.Instant.parse("2026-01-01T15:00:00Z");
+    var fixture =
+        new it.masterbet.football.domain.Fixture(
+            "calcio:1", 1, 2, "Leyton Orient", "AFC Wimbledon", 12, "League One", 2026L, at, null);
+    var official = new LabMatch(fixture, "2025/2026", "25", false, null, "source", null, "test");
+    var provider =
+        new it.masterbet.football.domain.Fixture(
+            "provider",
+            10,
+            20,
+            "Leyton Orient London",
+            "AFC Wimbledon",
+            24,
+            "League One",
+            2026L,
+            at,
+            null);
+    assertEquals(
+        "provider", new FixtureMatcher().match(official, List.of(provider)).orElseThrow().id());
+    assertNotEquals(
+        SourceIdentity.team("Leyton Orient London"), SourceIdentity.team("London City"));
+  }
+
+  @Test
   void countryAndVerifiedAliasAreRequiredAndAmbiguityExcludes() throws Exception {
     var c =
         new LabCompetition(

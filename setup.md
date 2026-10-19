@@ -93,6 +93,8 @@ Aprire `/admin` nel frontend: prima password locale scelta dall'utente (almeno 1
 
 Ordine ordinario: catalogo comune; risultati e quote indipendenti, anche in parallelo; calcolo offline dopo i download. Scegliere campionati, date, massimo tre bookmaker e aggiornamento forzato nell'admin. Risultati della stessa stagione antecedenti a gennaio vengono importati per la preparazione. Quote assenti hanno checkpoint ricontrollabili; l'aggiornamento forzato conserva le versioni precedenti. I calendari vengono ricontrollati per i rinvii, i risultati definitivi riusati. Il calcolo crea una nuova elaborazione e tutte le settimane/modalità; cambiarne la consultazione non ripete download/addestramento.
 
+Ripresa quote: `DOWNLOADED` indica solo risposta grezza acquisita; `IMPORTED` certifica che tutti gli esiti dell'incontro sono salvati. Dopo un'interruzione gli incontri conclusi `IMPORTED` e `NO_DATA` sono riutilizzati, mentre gli altri vengono riprocessati dalla cache senza riscaricare risposte presenti. Nessuna cancellazione della cache per errori di parsing: gli archivi voluminosi sono supportati con limite dell'involucro di 128 milioni di caratteri, hash verificato e limiti originali del payload conservati. Gli aggiornamenti discordanti restano archiviati; se coinvolgono l'ultimo prezzo utilizzabile, l'esito è indisponibile senza ripiego. Nessuna nuova dipendenza o variazione dei contratti HTTP.
+
 Da `backend`, dopo `package`, sono disponibili comandi locali equivalenti. Aggiungere i parametri TLS già documentati quando necessari; `--server.port=0` assegna una porta temporanea senza interferire con l'app aperta.
 
 ```powershell

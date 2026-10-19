@@ -14,13 +14,14 @@ public class AsOfPriceSelector {
     var eligible = updates.stream().filter(u -> !u.timestamp().isAfter(cutoff)).toList();
     var last = eligible.stream().max(Comparator.comparing(PriceUpdate::timestamp));
     if (last.isEmpty()) return Optional.empty();
-    var collisions =
+    boolean conflicting =
         eligible.stream()
             .filter(u -> u.timestamp().equals(last.get().timestamp()))
-            .distinct()
-            .count();
-    if (collisions > 1)
-      throw new IllegalArgumentException("Aggiornamenti discordanti allo stesso timestamp");
+            .anyMatch(
+                u ->
+                    u.price().compareTo(last.get().price()) != 0
+                        || u.active() != last.get().active());
+    if (conflicting) throw new AmbiguousPriceUpdateException();
     // Se l'ultimo aggiornamento sospende il mercato, non riesumare la quota precedente.
     // Il provider puo inviare price=0 anche con active=true: resta indisponibile,
     // senza recuperare un prezzo precedente e senza trasformarlo in una quota.

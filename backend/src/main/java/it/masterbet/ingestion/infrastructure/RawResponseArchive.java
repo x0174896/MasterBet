@@ -17,10 +17,23 @@ import org.springframework.stereotype.Component;
 public class RawResponseArchive {
   private final Path directory;
   private final ObjectMapper mapper;
+  private final ObjectMapper envelopeMapper;
 
   public RawResponseArchive(@Value("${masterbet.data-dir}") String directory, ObjectMapper mapper) {
     this.directory = Path.of(directory).resolve("raw");
     this.mapper = mapper;
+    // The envelope stores the entire JSON response as one string. Real histories exceed
+    // Jackson's default 20M string limit even though the individual payload fields do not.
+    this.envelopeMapper = mapper.copy();
+    this.envelopeMapper
+        .getFactory()
+        .setStreamReadConstraints(
+            mapper
+                .getFactory()
+                .streamReadConstraints()
+                .rebuild()
+                .maxStringLength(128_000_000)
+                .build());
   }
 
   private String identity(String endpoint, Map<String, String> parameters) {
@@ -35,7 +48,7 @@ public class RawResponseArchive {
     Path path = path(endpoint, parameters);
     if (!Files.exists(path)) return Optional.empty();
     try {
-      JsonNode envelope = mapper.readTree(Files.readString(path));
+      JsonNode envelope = envelopeMapper.readTree(Files.readString(path));
       String body = envelope.path("body").asText();
       if (!hash(body).equals(envelope.path("sha256").asText())
           || !identity(endpoint, parameters).equals(envelope.path("request").asText()))
@@ -64,7 +77,7 @@ public class RawResponseArchive {
       Path destination = path(endpoint, parameters);
       if (Files.exists(destination)) {
         String previous = Files.readString(destination);
-        var prior = mapper.readTree(previous);
+        var prior = envelopeMapper.readTree(previous);
         if (prior.path("sha256").asText().equals(hash(body))) return;
         Path revisions = directory.resolve("revisions");
         Files.createDirectories(revisions);

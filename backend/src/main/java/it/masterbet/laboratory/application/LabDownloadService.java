@@ -202,25 +202,11 @@ public class LabDownloadService {
               throw new IllegalArgumentException(
                   "Identificativo provider associato a piu incontri");
             repo.save(match.linked(f));
-            if (!request.refresh()
-                && f.finishedBefore(Instant.now())
-                && checkpoints
-                    .status(f.id(), request.bookmakers())
-                    .filter("NO_DATA"::equals)
-                    .isPresent()) {
-              p.item("Quote assenti gia verificate: " + f.id());
+            if (alreadyImported(f, request)) {
+              p.item("Quote gia importate o assenza gia verificata: " + f.id());
               continue;
             }
-            var history = history(f, request, p);
-            for (var q : history)
-              repo.save(
-                  new LabQuote(
-                      match.fixture().id(),
-                      q.bookmaker(),
-                      q.market(),
-                      q.outcomeId(),
-                      q.outcome(),
-                      q.updates()));
+            int imported = importHistory(f, match.fixture().id(), request, p);
             p.item(
                 "Quote "
                     + competition.name()
@@ -229,7 +215,7 @@ public class LabDownloadService {
                     + " - "
                     + match.fixture().away()
                     + ": "
-                    + history.size()
+                    + imported
                     + " esiti");
           } catch (Exception e) {
             p.error(match.fixture().id() + ": " + LabJobs.safe(e));
@@ -263,25 +249,12 @@ public class LabDownloadService {
                   f.id(),
                   "METADATI_ODDSPAPI");
           if (repo.match(mapped.id()).isEmpty()) repo.save(stub);
-          if (!request.refresh()
-              && f.finishedBefore(Instant.now())
-              && checkpoints
-                  .status(f.id(), request.bookmakers())
-                  .filter("NO_DATA"::equals)
-                  .isPresent()) {
-            p.item("Quote assenti gia verificate: " + f.id());
+          if (alreadyImported(f, request)) {
+            p.item("Quote gia importate o assenza gia verificata: " + f.id());
             continue;
           }
           try {
-            for (var q : history(f, request, p))
-              repo.save(
-                  new LabQuote(
-                      mapped.id(),
-                      q.bookmaker(),
-                      q.market(),
-                      q.outcomeId(),
-                      q.outcome(),
-                      q.updates()));
+            importHistory(f, mapped.id(), request, p);
             p.item("Quote archiviate in attesa dei risultati: " + f.home() + " - " + f.away());
           } catch (Exception e) {
             p.error(f.id() + ": " + LabJobs.safe(e));
@@ -290,6 +263,27 @@ public class LabDownloadService {
         }
       }
     };
+  }
+
+  private boolean alreadyImported(Fixture fixture, LabDownloadRequest request) {
+    return !request.refresh()
+        && fixture.finishedBefore(Instant.now())
+        && checkpoints
+            .status(fixture.id(), request.bookmakers())
+            .filter(s -> Set.of("NO_DATA", "IMPORTED").contains(s))
+            .isPresent();
+  }
+
+  private int importHistory(
+      Fixture fixture, String targetId, LabDownloadRequest request, LabJobs.Progress progress) {
+    var history = history(fixture, request, progress);
+    for (var q : history)
+      repo.save(
+          new LabQuote(
+              targetId, q.bookmaker(), q.market(), q.outcomeId(), q.outcome(), q.updates()));
+    // DOWNLOADED certifies the raw response only; reuse requires every outcome to be saved.
+    if (!history.isEmpty()) checkpoints.save(fixture.id(), request.bookmakers(), "IMPORTED");
+    return history.size();
   }
 
   private List<LabQuote> history(

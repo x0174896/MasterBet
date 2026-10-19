@@ -172,6 +172,7 @@ public final class SourceIdentity {
           Map.entry("manunited", "manchesterunited"),
           Map.entry("man city".replace(" ", ""), "manchestercity"),
           Map.entry("tottenhamhotspur", "tottenham"),
+          Map.entry("leytonorientlondon", "leytonorient"),
           Map.entry("atleticomadrid", "atleticomadrid"),
           Map.entry("athleticbilbao", "athleticclub"),
           Map.entry("sportinglisbon", "sportingcp"),

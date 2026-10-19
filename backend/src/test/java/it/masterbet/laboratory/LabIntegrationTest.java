@@ -134,6 +134,29 @@ class LabIntegrationTest {
         List.of(new PriceUpdate(kickoff.minusSeconds(86400), new BigDecimal("2.00"), true)));
   }
 
+  @Test
+  void restartingAnImportPreservesInPlayConflictsWithoutDuplicatingOrLosingPreMatchOdds() {
+    repo.save(LabData.match("calcio:1", 384, "2025/2026", kickoff, 1, 2, 1, 2, false));
+    var original = quote("calcio:1");
+    var updates = new ArrayList<>(original.updates());
+    updates.add(new PriceUpdate(kickoff.plusSeconds(30), new BigDecimal("5.1"), true));
+    updates.add(new PriceUpdate(kickoff.plusSeconds(30), new BigDecimal("5.2"), true));
+    var history =
+        new LabQuote(
+            original.fixtureId(),
+            original.bookmaker(),
+            original.market(),
+            original.outcomeId(),
+            original.outcome(),
+            updates);
+    repo.save(history);
+    repo.save(history);
+    assertEquals(1, repo.quotes("calcio:1").size());
+    var stored = repo.quotes("calcio:1").getFirst();
+    assertEquals(3, stored.updates().size());
+    assertEquals(0, stored.closing(kickoff).orElseThrow().price().compareTo(new BigDecimal("2")));
+  }
+
   LabBet bet(String id, String run, LabMatch match, Instant at) {
     return new LabBet(
         id,
