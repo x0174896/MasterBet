@@ -1,14 +1,32 @@
 import { Component, inject } from '@angular/core';
-import { DatePipe, DecimalPipe, PercentPipe, KeyValuePipe } from '@angular/common';
+import { DatePipe, DecimalPipe, PercentPipe, KeyValuePipe, CurrencyPipe } from '@angular/common';
 import { LabState } from './lab-state';
 @Component({
   selector: 'app-lab-model',
-  imports: [DatePipe, DecimalPipe, PercentPipe, KeyValuePipe],
+  imports: [DatePipe, DecimalPipe, PercentPipe, KeyValuePipe, CurrencyPipe],
   templateUrl: './lab-model.html',
 })
 export class LabModel {
   readonly state = inject(LabState);
-  ruleLabel(key: string, fallback: string) {
+  policyLabel(policy: string) {
+    const labels: Record<string, string> = {
+      adaptive: 'Calibrazione e filtri, con alternative',
+      calibrated: 'Sola calibrazione, con alternative',
+      'primary-only': 'Calibrazione e filtri, senza sostituzioni',
+    };
+    return labels[policy] ?? policy;
+  }
+  ruleLabel(key: string, fallback: string): string {
+    if (key.startsWith('Sostituzione senza vantaggio verificato: ')) {
+      const family = key.slice('Sostituzione senza vantaggio verificato: '.length);
+      return 'Alternativa non confermata · ' + this.ruleLabel('market:' + family, family);
+    }
+    if (key.includes(' | ')) {
+      return key
+        .split(' | ')
+        .map((part) => this.ruleLabel(part, part))
+        .join(' · ');
+    }
     if (key.startsWith('market:')) {
       const [, market, period, outcome] = key.split(':');
       const markets: Record<string, string> = {
@@ -40,6 +58,13 @@ export class LabModel {
       'odds:1.5-2.5': 'Quote da 1,50 a meno di 2,50',
       'odds:2.5-plus': 'Quote da 2,50 in su',
     };
+    const conditions: Record<string, string> = {
+      'calendar:busy': 'Almeno quattro incontri complessivi nei 14 giorni precedenti',
+      'previous:both-ht-zero': 'Entrambe senza gol nel precedente primo tempo',
+      'previous:conceded-three': 'Almeno una reduce da tre o più gol subiti',
+      'quote:older-24h': 'Ultimo prezzo osservato oltre 24 ore prima della partita',
+    };
+    if (fallback === key && conditions[key]) return conditions[key];
     return labels[key] ?? fallback;
   }
 }

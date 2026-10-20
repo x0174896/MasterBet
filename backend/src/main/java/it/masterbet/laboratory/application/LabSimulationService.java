@@ -21,17 +21,24 @@ public class LabSimulationService {
       QuotedOutcome quote, double rawProbability, double probability, double ev) {}
 
   private record Selection(
-      Optional<Candidate> best, Optional<Candidate> shadow, Map<String, Integer> rejected) {}
+      Optional<Candidate> best,
+      Optional<Candidate> shadow,
+      Map<String, Integer> rejected,
+      List<LabMarketFrame.Candidate> controls,
+      Map<String, String> policyPicks) {}
 
   private final LabRepository source;
   private final LabRunRepository runs;
   private final PoissonTrainer trainer;
   private final ProfitTargetStaking staking;
   private final LabDataValidation validation;
+  private final LabForecastHistory history;
   private final LabFeatures features = new LabFeatures();
   private final LabPatternMiner patterns = new LabPatternMiner();
   private final LabLearning learning = new LabLearning();
   private final LabSignalAudit signalAudit = new LabSignalAudit();
+  private final LabMarketLearning marketLearning = new LabMarketLearning();
+  private final LabMarketSelector marketSelector = new LabMarketSelector();
   private final MarketSettlement settlement = new MarketSettlement();
 
   public LabSimulationService(
@@ -39,17 +46,28 @@ public class LabSimulationService {
       LabRunRepository runs,
       PoissonTrainer trainer,
       ProfitTargetStaking staking,
-      LabDataValidation validation) {
+      LabDataValidation validation,
+      LabForecastHistory history) {
     this.source = source;
     this.runs = runs;
     this.trainer = trainer;
     this.staking = staking;
     this.validation = validation;
+    this.history = history;
   }
 
   public Consumer<LabJobs.Progress> calculate(LabRunConfig config) {
+    return calculate(config, null);
+  }
+
+  public Consumer<LabJobs.Progress> recalculate(LabRunRepository.Run run) {
+    return calculate(run.config(), run);
+  }
+
+  private Consumer<LabJobs.Progress> calculate(
+      LabRunConfig config, LabRunRepository.Run replacement) {
     return progress -> {
-      String id = UUID.randomUUID().toString();
+      String id = replacement == null ? UUID.randomUUID().toString() : replacement.id();
       // Calculation is strictly offline and never rewrites downloaded sources or alignments.
       var reference = reference(config);
       var validated = new HashSet<>(validation.verify(config).eligible());
@@ -79,7 +97,14 @@ public class LabSimulationService {
       var referenceBets = reference == null ? List.<LabBet>of() : runs.bets(reference.id());
       progress.update("Verifica e hash degli archivi locali");
       String hash = source.fingerprint();
-      runs.create(id, config, hash);
+      if (replacement == null) runs.create(id, config, hash);
+      else if (!replacement.equals(runs.run(id))
+          || !hash.equals(replacement.dataHash())
+          || config.strategy().equals("BASELINE")
+          || !config.mode().equals("HISTORICAL"))
+        throw new IllegalStateException(
+            "Campagna o sorgenti cambiate: ricalcolo annullato senza modifiche");
+      List<LabRunRepository.Batch> pending = new ArrayList<>();
       try {
         if (common.isEmpty() || all.isEmpty())
           throw new IllegalArgumentException(
@@ -129,6 +154,9 @@ public class LabSimulationService {
         Map<Boolean, Map<String, LabBet>> shadows = new HashMap<>();
         shadows.put(false, new HashMap<>());
         shadows.put(true, new HashMap<>());
+        Map<Boolean, List<LabMarketFrame>> marketFrames = new HashMap<>();
+        marketFrames.put(false, new ArrayList<>());
+        marketFrames.put(true, new ArrayList<>());
         for (Instant cutoff = first;
             cutoff.isBefore(end);
             cutoff = cutoff.plus(Duration.ofDays(7))) {
@@ -224,6 +252,26 @@ public class LabSimulationService {
                       asOf,
                       Set.of("ADAPTIVE", "FILTERED").contains(config.strategy()),
                       signalChecks);
+              var markets =
+                  marketLearning.fit(
+                      history.observations(
+                          marketFrames.get(cups), resultById, asOf, config.unitProfit()),
+                      asOf,
+                      Set.of("ADAPTIVE", "FILTERED").contains(config.strategy()),
+                      history.policies(
+                          marketFrames.get(cups), resultById, asOf, config.unitProfit()),
+                      history.replacements(
+                          marketFrames.get(cups), resultById, asOf, config.unitProfit()));
+              learned =
+                  new LabLearning.Snapshot(
+                      "market-learning-v4",
+                      learned.observations(),
+                      markets.latestResult(),
+                      learned.calibration(),
+                      List.of(),
+                      signalChecks,
+                      Map.of(),
+                      markets);
             }
             Map<String, Integer> rejectedCandidates = new TreeMap<>();
             var mined =
@@ -242,6 +290,7 @@ public class LabSimulationService {
                         .toList());
             List<LabBet> proposed = new ArrayList<>();
             List<LabBet> shadowProposals = new ArrayList<>();
+            List<LabMarketFrame> frameProposals = new ArrayList<>();
             Map<String, String> exclusions = new TreeMap<>();
             int excluded = 0;
             for (var target : targets) {
@@ -306,6 +355,21 @@ public class LabSimulationService {
               selection
                   .rejected()
                   .forEach((key, count) -> rejectedCandidates.merge(key, count, Integer::sum));
+              if (reference != null && !selection.controls().isEmpty()) {
+                var frame =
+                    new LabMarketFrame(
+                        target.fixture().id(),
+                        target.fixture().tournamentId(),
+                        target.season(),
+                        target.fixture().kickoff(),
+                        cutoff,
+                        cups,
+                        Arrays.stream(input.values()).boxed().toList(),
+                        selection.controls(),
+                        selection.policyPicks());
+                frameProposals.add(frame);
+                marketFrames.get(cups).add(frame);
+              }
               // Raw best prediction is kept even if the calibrated policy abstains. Its result is
               // admitted only in a later step, preventing selective learning from accepted bets.
               if (reference != null && selection.shadow().isPresent()) {
@@ -356,6 +420,10 @@ public class LabSimulationService {
               var fixture = target.fixture();
               List<String> explanation = new ArrayList<>(input.evidence());
               if (learned != null) {
+                var conditional =
+                    learned.markets() == null
+                        ? Optional.<LabMarketLearning.Calibration>empty()
+                        : learned.markets().calibration(LabMarketFrame.family(selected.quote()));
                 explanation.add(
                     String.format(
                         Locale.ITALY,
@@ -363,11 +431,23 @@ public class LabSimulationService {
                             + " pregresse. %s",
                         100 * selected.rawProbability(),
                         100 * selected.probability(),
-                        learned.observations(),
-                        learned.calibration().accepted()
-                            ? "Correzione verificata sul suffisso pregresso."
-                            : "Correzione non applicata: evidenza insufficiente o mancato"
-                                + " miglioramento."));
+                        conditional
+                            .map(LabMarketLearning.Calibration::support)
+                            .orElse(learned.observations()),
+                        conditional.isPresent()
+                            ? "Verifica specifica del mercato e della fascia; alternative incluse"
+                                + " nei controlli."
+                            : learned.calibration().accepted()
+                                ? "Correzione verificata sul suffisso pregresso."
+                                : "Correzione non applicata: evidenza insufficiente o mancato"
+                                    + " miglioramento."));
+                if (conditional.isPresent())
+                  explanation.add(
+                      selection.shadow().map(c -> c.quote().equals(selected.quote())).orElse(false)
+                          ? "Confermata la prima scelta grezza dopo i controlli specifici del"
+                              + " mercato."
+                          : "Mercato alternativo alla prima scelta grezza, ammesso dopo i propri"
+                              + " controlli di affidabilita.");
                 signalChecks.stream()
                     .filter(LabSignalAudit.Check::disabled)
                     .forEach(
@@ -413,7 +493,7 @@ public class LabSimulationService {
                       Arrays.stream(input.values()).boxed().toList(),
                       (reference == null
                               ? "lab-poisson-v1"
-                              : "lab-poisson-learning-v2/" + config.strategy())
+                              : "lab-poisson-market-v4/" + config.strategy())
                           + "/features-"
                           + input.values().length));
             }
@@ -426,28 +506,33 @@ public class LabSimulationService {
                       learned.calibration(),
                       learned.rules(),
                       signalChecks,
-                      rejectedCandidates);
-            runs.step(
-                new LabStep(
-                    id,
-                    step,
-                    cutoff,
-                    cups,
-                    training.size(),
-                    validation,
-                    mae,
-                    model,
-                    mined,
-                    Map.copyOf(perLeague),
-                    trainingHash,
-                    proposed.size(),
-                    excluded,
-                    "7 precedenti per squadra; EV >= 5%, probabilita >= 50%, quota <= 5; una"
-                        + " singola per incontro idoneo; ultimo prezzo prepartita",
-                    exclusions,
-                    learned),
-                proposed,
-                shadowProposals);
+                      rejectedCandidates,
+                      learned.markets());
+            var batch =
+                new LabRunRepository.Batch(
+                    new LabStep(
+                        id,
+                        step,
+                        cutoff,
+                        cups,
+                        training.size(),
+                        validation,
+                        mae,
+                        model,
+                        mined,
+                        Map.copyOf(perLeague),
+                        trainingHash,
+                        proposed.size(),
+                        excluded,
+                        "7 precedenti per squadra; EV >= 5%, probabilita >= 50%, quota <= 5; una"
+                            + " singola per incontro idoneo; ultimo prezzo prepartita",
+                        exclusions,
+                        learned),
+                    proposed,
+                    shadowProposals,
+                    frameProposals);
+            if (replacement == null) runs.save(batch);
+            else pending.add(batch);
             progress.item(
                 "Settimana "
                     + step
@@ -462,16 +547,23 @@ public class LabSimulationService {
                     + " righe pregresse");
           }
         }
-        runs.finish(
-            id,
-            "COMPLETED",
+        String report =
             "Calcolo offline completato in entrambe le modalita. Gli incontri senza sette"
                 + " precedenti, quote/mercati idonei o dati sufficienti sono esclusi, non"
                 + " forzati. Strategia "
                 + config.strategy()
-                + ". Esperimento retrospettivo: nessuna garanzia di rendimento futuro.");
+                + (reference == null
+                    ? "."
+                    : ". Calibrazione per mercato/fascia, alternative controllate e filtri"
+                        + " specifici del mercato.")
+                + " Esperimento retrospettivo: nessuna garanzia di rendimento futuro.";
+        if (replacement == null) runs.finish(id, "COMPLETED", report);
+        else {
+          progress.update("Pubblicazione atomica del ricalcolo nella campagna " + id);
+          runs.replace(replacement, hash, pending, report);
+        }
       } catch (Exception e) {
-        runs.finish(id, "FAILED", LabJobs.safe(e));
+        if (replacement == null) runs.finish(id, "FAILED", LabJobs.safe(e));
         throw e;
       }
     };
@@ -486,6 +578,30 @@ public class LabSimulationService {
       int competition,
       String season,
       List<Double> input) {
+    if (learned != null && learned.markets() != null) {
+      var selected =
+          marketSelector.select(
+              model, quotes, kickoff, learned.markets(), competition, season, input);
+      return new Selection(
+          selected
+              .best()
+              .map(
+                  c ->
+                      new Candidate(
+                          c.source().quote(), c.source().probability(), c.probability(), c.ev())),
+          selected
+              .primary()
+              .map(
+                  c ->
+                      new Candidate(
+                          c.quote(),
+                          c.probability(),
+                          c.probability(),
+                          c.probability() * c.quote().price().doubleValue() - 1)),
+          selected.rejected(),
+          selected.controls(),
+          selected.policyPicks());
+    }
     List<Candidate> candidates = new ArrayList<>();
     List<Candidate> shadows = new ArrayList<>();
     Map<String, Integer> rejected = new TreeMap<>();
@@ -522,7 +638,11 @@ public class LabSimulationService {
             .thenComparing(c -> c.quote().market().id())
             .thenComparing(c -> c.quote().outcomeId());
     return new Selection(
-        candidates.stream().min(order), shadows.stream().min(order), Map.copyOf(rejected));
+        candidates.stream().min(order),
+        shadows.stream().min(order),
+        Map.copyOf(rejected),
+        List.of(),
+        Map.of());
   }
 
   private LabRunRepository.Run reference(LabRunConfig config) {

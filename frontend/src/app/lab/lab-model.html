@@ -37,22 +37,157 @@
           }}. Le verifiche sono esplorative; l’assenza di conferma non dimostra che una statistica
           sia inutile.
         </p>
-        <p class="small">
-          Calibrazione {{ learning.calibration.accepted ? 'applicata' : 'non applicata' }} ·
-          {{ learning.calibration.fitted }} casi di preparazione e
-          {{ learning.calibration.validation }} di verifica. Errore Brier prima/dopo:
-          {{
-            learning.calibration.rawBrier === null
-              ? '—'
-              : (learning.calibration.rawBrier | number: '1.4-4')
-          }}
-          /
-          {{
-            learning.calibration.calibratedBrier === null
-              ? '—'
-              : (learning.calibration.calibratedBrier | number: '1.4-4')
-          }}.
-        </p>
+        @if (learning.markets; as markets) {
+          <p class="small">
+            Verifica distinta per mercato e fascia: {{ markets.fixtures }} incontri,
+            {{ markets.candidates }} candidati, comprese {{ markets.alternatives }} alternative.
+            Ogni incontro ha peso complessivo uno nella preparazione di ciascun calibratore. Le
+            condizioni di calendario e campionato possono escludere un mercato senza bloccare gli
+            altri.
+          </p>
+          <details class="mt-3">
+            <summary>
+              Affidabilità dei mercati e delle alternative ({{ markets.families.length }})
+            </summary>
+            @for (family of markets.families; track family.family) {
+              <div class="border-top mt-2 pt-2 small">
+                <strong>{{ ruleLabel('market:' + family.family, family.family) }}</strong>
+                · {{ family.support }} incontri · preparazione/verifica {{ family.fitted }}/{{
+                  family.validation
+                }}.
+                <div>{{ family.reason }}</div>
+                <div>
+                  Brier prima/dopo:
+                  {{ family.rawBrier === null ? '—' : (family.rawBrier | number: '1.4-4') }} /
+                  {{
+                    family.calibratedBrier === null
+                      ? '—'
+                      : (family.calibratedBrier | number: '1.4-4')
+                  }}.
+                </div>
+                @if (family.validationFrom) {
+                  <div>
+                    Verifica dalle previsioni del
+                    {{ family.validationFrom | date: 'dd/MM/yyyy HH:mm' }}; ultimo esito del
+                    training
+                    {{
+                      family.latestFitResult
+                        ? (family.latestFitResult | date: 'dd/MM/yyyy HH:mm')
+                        : 'nessuno'
+                    }}.
+                  </div>
+                }
+                @for (band of family.bands; track band.band) {
+                  <div>
+                    Probabilità grezza {{ band.band }}% ·
+                    {{ band.ready ? 'fascia ammessa' : 'fascia non confermata' }} ·
+                    {{ band.support }} incontri di verifica, {{ band.selected }} sopra le soglie di
+                    proposta; probabilità media
+                    {{ band.selected ? (band.predicted | percent: '1.1-1') : '—' }}, vittorie
+                    {{ band.selected ? (band.observed | percent: '1.1-1') : '—' }}.
+                  </div>
+                }
+              </div>
+            }
+          </details>
+          <details class="mt-3">
+            <summary>Condizioni controllate separatamente per mercato</summary>
+            @for (family of markets.conditions; track family.family) {
+              @for (rule of family.rules; track rule.key) {
+                <p class="small mt-2 mb-1">
+                  <strong>{{ ruleLabel('market:' + family.family, family.family) }}</strong> ·
+                  {{ ruleLabel(rule.key, rule.description) }} ·
+                  {{
+                    rule.excluded
+                      ? 'Esclusione attiva per questo mercato'
+                      : 'Esclusione non confermata'
+                  }}
+                  · {{ rule.support }} incontri; ROI delle due parti
+                  {{ rule.firstRoi | percent: '1.1-1' }} / {{ rule.secondRoi | percent: '1.1-1' }}.
+                </p>
+              }
+            } @empty {
+              <p class="small mt-2">Nessuna condizione con supporto sufficiente.</p>
+            }
+          </details>
+          @if (markets.version === 'conditional-markets-v2') {
+            <details class="mt-3">
+              <summary>Vantaggio delle sostituzioni rispetto alla prima scelta</summary>
+              <p class="small mt-2">
+                Controlli sulle migliori alternative prodotte nelle settimane precedenti, prima di
+                conoscerne l’esito, anche quando non sono state giocate. Servono 30 incontri, sei
+                settimane e due blocchi positivi, oltre a limiti inferiori esplorativi positivi per
+                rendimento e differenza rispetto alla prima scelta sulle stesse partite. Non è una
+                garanzia di profitto futuro.
+              </p>
+              @for (check of markets.replacements ?? []; track check.family) {
+                <p class="small mt-2 mb-1">
+                  <strong>{{ ruleLabel('market:' + check.family, check.family) }}</strong> ·
+                  {{ check.allowed ? 'Sostituzione ammessa' : 'Sostituzione non confermata' }} ·
+                  {{ check.support }} incontri in {{ check.weeks }} settimane. {{ check.reason }}.
+                  ROI dei blocchi {{ check.firstRoi | percent: '1.1-1' }} /
+                  {{ check.secondRoi | percent: '1.1-1' }}; limite inferiore del ROI
+                  {{ check.lowerRoi === null ? '—' : (check.lowerRoi | percent: '1.1-1') }}, del
+                  vantaggio medio
+                  {{
+                    check.lowerDifference === null
+                      ? '—'
+                      : (check.lowerDifference | currency: 'EUR')
+                  }}.
+                </p>
+              } @empty {
+                <p class="small mt-2">Nessun precedente di sostituzione liquidabile al taglio.</p>
+              }
+            </details>
+          }
+          <div class="table-responsive mt-3">
+            <table class="table table-sm small">
+              <caption>
+                Controlli diagnostici sulle sole giocate concluse prima del taglio. Stesso modello e
+                stesse fonti, nessuna campagna aggiuntiva.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Selezione</th>
+                  <th scope="col">Concluse</th>
+                  <th scope="col">Netto</th>
+                  <th scope="col">ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (policy of markets.policies; track policy.policy) {
+                  <tr>
+                    <th scope="row">{{ policyLabel(policy.policy) }}</th>
+                    <td>{{ policy.settled }}</td>
+                    <td>{{ policy.net | currency: 'EUR' }}</td>
+                    <td>
+                      {{
+                        policy.turnover ? (policy.net / policy.turnover | percent: '1.1-1') : '—'
+                      }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <p class="small">
+            Calibrazione {{ learning.calibration.accepted ? 'applicata' : 'non applicata' }} ·
+            {{ learning.calibration.fitted }} casi di preparazione e
+            {{ learning.calibration.validation }} di verifica. Errore Brier prima/dopo:
+            {{
+              learning.calibration.rawBrier === null
+                ? '—'
+                : (learning.calibration.rawBrier | number: '1.4-4')
+            }}
+            /
+            {{
+              learning.calibration.calibratedBrier === null
+                ? '—'
+                : (learning.calibration.calibratedBrier | number: '1.4-4')
+            }}.
+          </p>
+        }
         @for (signal of learning.signals; track signal.group) {
           <p class="small mb-1">
             <strong>{{ signal.group }}</strong
@@ -62,23 +197,26 @@
             {{ signal.secondGain | percent: '1.1-1' }} ({{ signal.observations }} incontri).
           </p>
         }
-        <details class="mt-3">
-          <summary>Categorie e condizioni controllate ({{ learning.rules.length }})</summary>
-          @for (rule of learning.rules; track rule.key) {
-            <p class="small mt-2 mb-1">
-              <strong>{{ ruleLabel(rule.key, rule.description) }}</strong> ·
-              {{ rule.excluded ? 'Esclusione attiva' : 'Esclusione non confermata' }} ·
-              {{ rule.support }} casi. Rendimento delle due parti:
-              {{ rule.firstRoi | percent: '1.1-1' }} / {{ rule.secondRoi | percent: '1.1-1' }};
-              altri casi: {{ rule.comparisonFirstRoi | percent: '1.1-1' }} /
-              {{ rule.comparisonSecondRoi | percent: '1.1-1' }}. Campioni {{ rule.firstSupport }} /
-              {{ rule.secondSupport }}. Controllo aggiuntivo a puntata costante, limite superiore
-              esplorativo: {{ rule.upperMeanReturn | percent: '1.1-1' }}.
-            </p>
-          } @empty {
-            <p class="small mt-2">Nessuna regola disponibile per questa finestra e strategia.</p>
-          }
-        </details>
+        @if (!learning.markets) {
+          <details class="mt-3">
+            <summary>Categorie e condizioni controllate ({{ learning.rules.length }})</summary>
+            @for (rule of learning.rules; track rule.key) {
+              <p class="small mt-2 mb-1">
+                <strong>{{ ruleLabel(rule.key, rule.description) }}</strong> ·
+                {{ rule.excluded ? 'Esclusione attiva' : 'Esclusione non confermata' }} ·
+                {{ rule.support }} casi. Rendimento delle due parti:
+                {{ rule.firstRoi | percent: '1.1-1' }} / {{ rule.secondRoi | percent: '1.1-1' }};
+                altri casi: {{ rule.comparisonFirstRoi | percent: '1.1-1' }} /
+                {{ rule.comparisonSecondRoi | percent: '1.1-1' }}. Campioni
+                {{ rule.firstSupport }} / {{ rule.secondSupport }}. Controllo aggiuntivo a puntata
+                costante, limite superiore esplorativo:
+                {{ rule.upperMeanReturn | percent: '1.1-1' }}.
+              </p>
+            } @empty {
+              <p class="small mt-2">Nessuna regola disponibile per questa finestra e strategia.</p>
+            }
+          </details>
+        }
         <details class="mt-3">
           <summary>Esiti candidati scartati prima della scelta della singola</summary>
           <p class="small mt-2">

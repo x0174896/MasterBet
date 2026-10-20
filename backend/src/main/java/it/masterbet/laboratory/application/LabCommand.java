@@ -77,9 +77,12 @@ public class LabCommand implements ApplicationRunner {
                       option(args, "lab-reference", ""),
                       option(args, "lab-name", "Ricerca adattiva"),
                       option(args, "lab-strategy", "ADAPTIVE")));
+          case "recalculate" -> experiments.recalculate(option(args, "lab-run", ""));
           default -> throw new IllegalArgumentException("Azione sconosciuta");
         };
-    var status = jobs.blocking(action.equals("experiment") ? "calculate" : action, operation);
+    var status =
+        jobs.blocking(
+            Set.of("experiment", "recalculate").contains(action) ? "calculate" : action, operation);
     System.out.println(
         "MASTERBET_LAB "
             + status.status()

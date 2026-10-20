@@ -48,7 +48,7 @@ export interface Bet {
   includeCupScores: boolean;
   quote: {
     bookmaker: string;
-    market: { name: string; period: string };
+    market: { name: string; period: string; line?: number | null };
     outcome: string;
     price: number;
     observedAt: string;
@@ -140,6 +140,48 @@ export interface LearningSnapshot {
     excluded: boolean;
   }[];
   rejectedCandidates: Record<string, number>;
+  markets?: {
+    version: string;
+    fixtures: number;
+    candidates: number;
+    alternatives: number;
+    latestResult: string | null;
+    families: {
+      family: string;
+      support: number;
+      fitted: number;
+      validation: number;
+      validationFrom: string | null;
+      latestFitResult: string | null;
+      rawBrier: number | null;
+      calibratedBrier: number | null;
+      accepted: boolean;
+      bands: {
+        band: string;
+        support: number;
+        selected: number;
+        predicted: number;
+        observed: number;
+        ready: boolean;
+      }[];
+      reason: string;
+    }[];
+    conditions: { family: string; rules: LearningSnapshot['rules'] }[];
+    policies: { policy: string; settled: number; turnover: number; net: number }[];
+    replacements?: {
+      family: string;
+      support: number;
+      weeks: number;
+      firstSupport: number;
+      secondSupport: number;
+      firstRoi: number;
+      secondRoi: number;
+      lowerRoi: number | null;
+      lowerDifference: number | null;
+      allowed: boolean;
+      reason: string;
+    }[];
+  } | null;
 }
 export interface CampaignMetrics {
   includeCupScores: boolean;

@@ -15,7 +15,15 @@ Frontend `127.0.0.1:4200`, proxy `/api/**` verso backend 8080. `dev-local.bat` a
 
 `/campagne` legge `GET /api/lab/campaigns?competition=0&cursor=...`: saldo, rendimento, puntato, discesa dal picco e qualità delle probabilità per entrambe le modalità coppe. Per default mostra esplicitamente i risultati finali; togliendo la checkbox confronta allo stesso istante simulato. Campagne incomplete visibili con stato ma non selezionabili come concluse. `/modello` espone anche decisioni sui gruppi di statistiche, verifica della calibrazione, categorie controllate e candidati scartati.
 
+Gli step con `learning.markets` mostrano verifiche specifiche di mercato/periodo/esito e fascia di probabilità, con supporti per incontri distinti, date separate di training e verifica, condizioni limitate al mercato e controlli diagnostici delle tre politiche sulle sole giocate già concluse. I confronti con/senza alternative usano lo stesso modello, non creano campagne. I vecchi step senza questo campo mantengono la vista precedente. Contratti GET invariati con campo opzionale aggiuntivo e stub aggiornati.
+
+Le proposte mostrano esplicitamente anche linea e periodo della quota, distinguendo per esempio Under 1,5 del primo tempo da quello della partita intera. Campi già presenti nelle risposte reali, descritti nel DTO frontend senza introdurre nuove API.
+
+Gli step `conditional-markets-v2` espongono anche `learning.markets.replacements`: supporti, settimane, ROI dei due blocchi e limiti inferiori del rendimento e del confronto abbinato alla prima scelta. Le alternative non promosse restano nei controlli di apprendimento, non nel saldo. Le campagne precedenti senza il campo restano leggibili.
+
 L'admin crea esperimenti con `POST /api/lab/admin/experiments`, corpo `{referenceRunId,name,strategy}`; strategie `CALIBRATED`, `SIGNALS`, `FILTERED`, `ADAPTIVE`. Periodo, campionati e utile ereditati dal riferimento originale; nessun download. Gli esperimenti non sostituiscono le campagne precedenti. Sessione e intestazione anti-CSRF richieste come per gli altri comandi.
+
+Un ricalcolo esplicitamente autorizzato nello stesso ID è disponibile da CLI (`--lab-action=recalculate --lab-run=...`, istruzioni in `setup.md`), solo per esperimenti storici completi. La versione precedente resta visibile fino alla pubblicazione atomica; nessuna campagna aggiuntiva. Dopo il completamento premere «Aggiorna archivio» per leggere i nuovi dati nello stesso elemento del selettore. La campagna originale non può essere sostituita da questo comando.
 
 Data e checkbox leggono `GET /api/lab/workspace`, senza download/addestramento. Proposte future in attesa anche dopo spoiler. Grafico del netto con punto iniziale zero e un punto per singola liquidabile, valori negativi, tooltip e pulsanti da tastiera. Paginazione a 50 proposte, nessun limite al totale.
 

@@ -2,7 +2,7 @@
 
 **Stato: MODELLO FACOLTATIVO, NESSUNA IMPLEMENTAZIONE ATTESTATA.** La presenza di questo file non significa che esistano interceptor, endpoint simulati, pannelli o comandi mock. Compilarlo soltanto se la modalità mock fa parte del progetto autorizzato.
 
-Verifica MasterBet del 20 ottobre 2026: nessuna modalità mock applicativa o comando `build:mock` presente. I soli stub HTTP dei test Angular sono aggiornati per `GET /api/lab/campaigns`, `POST /api/lab/admin/experiments` e i campi opzionali delle campagne/decisioni adattive. Contratto reale e comandi in `setup.md` e `frontend/README.md`.
+Verifica MasterBet del 20 ottobre 2026: nessuna modalità mock applicativa o comando `build:mock` presente. I soli stub HTTP dei test Angular sono aggiornati per `GET /api/lab/campaigns`, `POST /api/lab/admin/experiments` e i campi opzionali delle campagne/decisioni adattive, inclusi `learning.markets`, `learning.markets.replacements`, verifiche per mercato/fascia e confronti diagnostici. Linea e periodo delle quote già restituiti dalle API sono descritti anche nei DTO frontend. Nessun endpoint modificato per il ricalcolo nello stesso ID, disponibile solo da CLI. Contratto reale e comandi in `setup.md` e `frontend/README.md`.
 
 ## Scopo e avvio
 

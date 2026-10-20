@@ -75,6 +75,7 @@ class LabIntegrationTest {
             "lab_fixture_alignment",
             "lab_download_checkpoint",
             "lab_spoiler",
+            "lab_market_frame",
             "lab_run_result",
             "lab_learning_prediction",
             "lab_bet",
@@ -390,7 +391,7 @@ class LabIntegrationTest {
   @Test
   void engineTrainsBothModesAcrossLeaguesAndFutureResultsCannotChangePastModels() {
     var start = Instant.parse("2026-01-01T15:00:00Z");
-    for (int league : List.of(384, 82)) {
+    for (int league : List.of(384, 82, 8, 9, 12, 14)) {
       repo.save(
           new LabCompetition(
               league,
@@ -401,22 +402,22 @@ class LabIntegrationTest {
               List.of("2026"),
               league,
               "COMUNE"));
-      for (var m : LabData.season(league, "2026", start, 21)) {
+      for (var m : LabData.season(league, "2026", start, 26)) {
         repo.save(m.linked("provider-" + m.fixture().id()));
         repo.save(quote(m.fixture().id()));
       }
     }
     var config =
         new LabRunConfig(
-            LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 20), List.of(), null, "HISTORICAL");
+            LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), List.of(), null, "HISTORICAL");
     var jobs = context.getBean(LabJobs.class);
     var simulation = context.getBean(LabSimulationService.class);
     assertEquals("SUCCEEDED", jobs.blocking("calculate", simulation.calculate(config)).status());
     var first = runs.runs().getFirst();
     var firstSteps = runs.steps(first.id());
-    assertEquals(6, firstSteps.size());
+    assertEquals(10, firstSteps.size());
     assertTrue(firstSteps.getFirst().trainingRows() >= 25);
-    assertEquals(2, firstSteps.getFirst().rowsPerCompetition().size());
+    assertEquals(6, firstSteps.getFirst().rowsPerCompetition().size());
     assertTrue(runs.bets(first.id()).stream().anyMatch(LabBet::includeCupScores));
     assertTrue(runs.bets(first.id()).stream().anyMatch(b -> !b.includeCupScores()));
     for (var b : runs.bets(first.id())) {
@@ -476,6 +477,9 @@ class LabIntegrationTest {
     assertEquals(
         sourceCounts, jdbc.queryForObject("SELECT COUNT(*) FROM lab_revision", Integer.class));
     assertTrue(runs.steps(adaptive.id()).stream().allMatch(s -> s.learning() != null));
+    assertFalse(
+        runs.bets(adaptive.id()).isEmpty(),
+        "The complete engine must exercise conditional selection, not only abstention");
     assertTrue(
         runs.steps(adaptive.id()).stream()
             .allMatch(
@@ -495,8 +499,88 @@ class LabIntegrationTest {
                       .predict(b.features().stream().mapToDouble(Double::doubleValue).toArray()))
               .probability(b.quote())
               .orElseThrow();
-      assertEquals(b.probability(), frozen.learning().calibration().apply(raw), 1e-12);
+      assertEquals(
+          b.probability(),
+          frozen
+              .learning()
+              .markets()
+              .calibration(LabMarketFrame.family(b.quote()))
+              .orElseThrow()
+              .apply(raw),
+          1e-12);
     }
+    assertFalse(runs.marketFrames(adaptive.id()).isEmpty());
+    var beforeRuns = runs.runs().size();
+    var beforeCreated = adaptive.createdAt();
+    assertEquals(
+        "SUCCEEDED",
+        jobs.blocking(
+                "calculate", context.getBean(LabExperimentService.class).recalculate(adaptive.id()))
+            .status());
+    assertEquals(beforeRuns, runs.runs().size());
+    assertEquals(beforeCreated, runs.run(adaptive.id()).createdAt());
+    assertEquals(originalBets, runs.bets(first.id()));
+    assertEquals(repo.json(originalSteps), repo.json(runs.steps(first.id())));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> context.getBean(LabExperimentService.class).recalculate(first.id()));
+  }
+
+  @Test
+  void replacementRollsBackOnFailureAndCannotTouchTheOriginalOrAnotherCampaignsRows() {
+    var at = kickoff.minusSeconds(86400 * 3);
+    var config =
+        new LabRunConfig(
+            LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 10), List.of(), null, "HISTORICAL");
+    var match = LabData.match("a", 384, "2025/2026", kickoff, 1, 2, 0, 0, false);
+    repo.save(match);
+    runs.create("original", config, "hash");
+    var originalStep =
+        new LabStep(
+            "original", 1, at, false, 30, 6, .5, null, List.of(), Map.of(), "hash", 1, 0, "test");
+    var originalBet = bet("original-bet", "original", match, at);
+    runs.step(originalStep, List.of(originalBet));
+    runs.finish("original", "COMPLETED", "preserve");
+    runs.reveal(originalBet.id());
+    var experiment =
+        context.getBean(LabExperimentService.class).config("original", "Working", "ADAPTIVE");
+    runs.create("working", experiment, "hash");
+    var step =
+        new LabStep(
+            "working", 1, at, false, 30, 6, .5, null, List.of(), Map.of(), "hash", 1, 0, "test");
+    var existing = bet("old-working-bet", "working", match, at);
+    runs.step(step, List.of(existing));
+    runs.finish("working", "COMPLETED", "old working");
+    runs.reveal(existing.id());
+    var expected = runs.run("working");
+    var replacement =
+        new LabRunRepository.Batch(
+            step, List.of(bet("new-working-bet", "working", match, at)), List.of(), List.of());
+    assertThrows(
+        RuntimeException.class,
+        () -> runs.replace(expected, "hash", List.of(replacement, replacement), "new"));
+    assertEquals(List.of(existing), runs.bets("working"));
+    assertEquals(expected, runs.run("working"));
+    assertTrue(runs.revealed(existing.id()));
+    assertThrows(
+        IllegalStateException.class,
+        () -> runs.replace(runs.run("original"), "hash", List.of(replacement), "wrong"));
+    var foreign = new LabRunRepository.Batch(step, List.of(originalBet), List.of(), List.of());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> runs.replace(expected, "hash", List.of(foreign), "wrong"));
+    assertThrows(
+        IllegalStateException.class,
+        () -> runs.replace(expected, "changed-source", List.of(replacement), "wrong"));
+    runs.replace(expected, "hash", List.of(replacement), "updated");
+    assertEquals(expected.createdAt(), runs.run("working").createdAt());
+    assertEquals(2, runs.runs().size());
+    assertEquals("new-working-bet", runs.bets("working").getFirst().id());
+    assertFalse(runs.revealed(existing.id()));
+    assertEquals(List.of(originalBet), runs.bets("original"));
+    assertTrue(runs.revealed(originalBet.id()));
+    assertEquals("preserve", runs.run("original").report());
+    assertEquals("updated", runs.run("working").report());
   }
 
   @Test

@@ -9,6 +9,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class LabRunRepository {
+  public record Batch(
+      LabStep step, List<LabBet> bets, List<LabBet> shadows, List<LabMarketFrame> markets) {
+    public Batch {
+      bets = List.copyOf(bets);
+      shadows = List.copyOf(shadows);
+      markets = List.copyOf(markets);
+    }
+  }
+
   public record Run(
       String id,
       String status,
@@ -113,6 +122,78 @@ public class LabRunRepository {
   }
 
   @Transactional
+  public void save(Batch batch) {
+    step(batch.step(), batch.bets(), batch.shadows());
+    for (var frame : batch.markets())
+      jdbc.update(
+          "INSERT INTO lab_market_frame(run_id,fixture_id,include_cup_scores,payload)"
+              + " VALUES(?,?,?,?)",
+          batch.step().runId(),
+          frame.fixtureId(),
+          frame.includeCupScores(),
+          json.json(frame));
+  }
+
+  public List<LabMarketFrame> marketFrames(String id) {
+    return jdbc.query(
+        "SELECT payload FROM lab_market_frame WHERE run_id=? ORDER BY"
+            + " fixture_id,include_cup_scores",
+        (r, n) -> json.read(r.getString(1), LabMarketFrame.class),
+        id);
+  }
+
+  public List<LabBet> shadows(String id) {
+    return jdbc.query(
+        "SELECT payload FROM lab_learning_prediction WHERE run_id=? ORDER BY"
+            + " fixture_id,include_cup_scores",
+        (r, n) -> json.read(r.getString(1), LabBet.class),
+        id);
+  }
+
+  /** Publish only a complete recomputation. Failure rolls back; the baseline cannot be replaced. */
+  @Transactional
+  public void replace(Run expected, String hash, List<Batch> batches, String report) {
+    jdbc.queryForObject(
+        "SELECT id FROM lab_run WHERE id=? FOR UPDATE", String.class, expected.id());
+    var current = run(expected.id());
+    if (!current.equals(expected)
+        || !current.status().equals("COMPLETED")
+        || current.config().strategy().equals("BASELINE")
+        || !current.config().mode().equals("HISTORICAL")
+        || !current.dataHash().equals(hash))
+      throw new IllegalStateException(
+          "Ricalcolo consentito solo su un esperimento storico completo con sorgenti invariate");
+    if (batches.isEmpty()
+        || batches.stream()
+            .anyMatch(
+                b ->
+                    !b.step().runId().equals(expected.id())
+                        || java.util.stream.Stream.concat(b.bets().stream(), b.shadows().stream())
+                            .anyMatch(
+                                p ->
+                                    !p.runId().equals(expected.id())
+                                        || p.step() != b.step().number()
+                                        || p.includeCupScores() != b.step().includeCupScores()
+                                        || !p.availableAt().equals(b.step().cutoff()))
+                        || b.markets().stream()
+                            .anyMatch(
+                                f ->
+                                    f.includeCupScores() != b.step().includeCupScores()
+                                        || !f.predictedAt().equals(b.step().cutoff()))))
+      throw new IllegalArgumentException("Step del ricalcolo non validi");
+    // An old spoiler may refer to a different market after replacement, even when its bet ID is
+    // reused.
+    jdbc.update(
+        "DELETE FROM lab_spoiler WHERE bet_id IN (SELECT id FROM lab_bet WHERE run_id=?)",
+        expected.id());
+    for (String table :
+        List.of("lab_bet", "lab_step", "lab_learning_prediction", "lab_market_frame"))
+      jdbc.update("DELETE FROM " + table + " WHERE run_id=?", expected.id());
+    for (var batch : batches) save(batch);
+    finish(expected.id(), "COMPLETED", report);
+  }
+
+  @Transactional
   public void finish(String id, String status, String report) {
     freezeResults(id);
     var bets = bets(id);
@@ -134,8 +215,10 @@ public class LabRunRepository {
         "INSERT INTO lab_run_result(run_id,fixture_id,payload) SELECT ?,m.id,m.payload FROM"
             + " lab_match m WHERE m.has_score=TRUE AND (EXISTS (SELECT 1 FROM lab_bet b WHERE"
             + " b.run_id=? AND b.fixture_id=m.id) OR EXISTS (SELECT 1 FROM lab_learning_prediction"
-            + " p WHERE p.run_id=? AND p.fixture_id=m.id)) AND NOT EXISTS (SELECT 1 FROM"
+            + " p WHERE p.run_id=? AND p.fixture_id=m.id) OR EXISTS (SELECT 1 FROM lab_market_frame"
+            + " c WHERE c.run_id=? AND c.fixture_id=m.id)) AND NOT EXISTS (SELECT 1 FROM"
             + " lab_run_result f WHERE f.run_id=? AND f.fixture_id=m.id)",
+        id,
         id,
         id,
         id,

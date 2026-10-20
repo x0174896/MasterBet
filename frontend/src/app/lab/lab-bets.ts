@@ -10,4 +10,12 @@ import { LabState } from './lab-state';
 })
 export class LabBets {
   readonly state = inject(LabState);
+  periodLabel(period: string) {
+    const periods: Record<string, string> = {
+      fulltime: 'Partita intera',
+      p1: 'Primo tempo',
+      p2: 'Secondo tempo',
+    };
+    return periods[period] ?? period;
+  }
 }

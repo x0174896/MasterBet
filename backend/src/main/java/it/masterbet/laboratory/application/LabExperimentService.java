@@ -9,12 +9,17 @@ public class LabExperimentService {
   private final LabRunRepository runs;
   private final LabSimulationService simulation;
   private final LabJobs jobs;
+  private final LabReplayService replay;
 
   public LabExperimentService(
-      LabRunRepository runs, LabSimulationService simulation, LabJobs jobs) {
+      LabRunRepository runs,
+      LabSimulationService simulation,
+      LabJobs jobs,
+      LabReplayService replay) {
     this.runs = runs;
     this.simulation = simulation;
     this.jobs = jobs;
+    this.replay = replay;
   }
 
   public LabRunConfig config(String referenceRunId, String name, String strategy) {
@@ -42,5 +47,17 @@ public class LabExperimentService {
 
   public LabJobs.Status start(String referenceRunId, String name, String strategy) {
     return jobs.start("calculate", simulation.calculate(config(referenceRunId, name, strategy)));
+  }
+
+  public java.util.function.Consumer<LabJobs.Progress> recalculate(String runId) {
+    var run = runs.run(runId);
+    if (!run.status().equals("COMPLETED")
+        || run.config().strategy().equals("BASELINE")
+        || !run.config().mode().equals("HISTORICAL"))
+      throw new IllegalArgumentException(
+          "Scegliere un esperimento storico completo, mai la campagna originale");
+    return runs.marketFrames(run.id()).isEmpty()
+        ? simulation.recalculate(run)
+        : replay.recalculate(run);
   }
 }

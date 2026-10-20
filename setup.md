@@ -1,6 +1,6 @@
 # Predisposizione, verifiche e avvio
 
-Aggiornato su Windows il 20 ottobre 2026 per il laboratorio multicampionato e gli esperimenti adattivi. Eseguire i comandi dalla cartella indicata. Usare `develop` per lo sviluppo e `main` per le versioni integrate.
+Aggiornato su Windows il 20 ottobre 2026 per il laboratorio multicampionato, la verifica delle alternative e il ricalcolo autorizzato nello stesso esperimento. Eseguire i comandi dalla cartella indicata. Usare `develop` per lo sviluppo e `main` per le versioni integrate.
 
 ## Versioni adottate
 
@@ -87,7 +87,7 @@ La verifica TLS resta attiva. Per l'importazione Java usare gli stessi due param
 
 ## Laboratorio multicampionato corrente
 
-Flyway V5–V11 aggiunge archivio competizioni/partite/quote/revisioni, job/checkpoint, lock di avvio, elaborazioni/step/proposte e spoiler. V10 aggiunge `lab_campaign_stage`, `lab_fixture_alignment` e proprietà/errori tecnici dei job; V11 esiti congelati e previsioni grezze di controllo per campagna. V1–V4 e i dati sorgenti precedenti restano conservati. Nessuna dipendenza applicativa aggiunta. Il formatter Google Java Format 1.37.0 è stato usato solo come strumento temporaneo locale, non è necessario per avvio/build.
+Flyway V5–V12 aggiunge archivio competizioni/partite/quote/revisioni, job/checkpoint, lock di avvio, elaborazioni/step/proposte e spoiler. V10 aggiunge `lab_campaign_stage`, `lab_fixture_alignment` e proprietà/errori tecnici dei job; V11 esiti congelati e previsioni grezze di controllo per campagna. V12 aggiunge soltanto `lab_market_frame` per le previsioni prive di esito sui mercati candidati; non aggiorna righe esistenti. V1–V4 e i dati sorgenti precedenti restano conservati. Nessuna dipendenza applicativa aggiunta. Il formatter Google Java Format 1.37.0 è stato usato solo come strumento temporaneo locale, non è necessario per avvio/build.
 
 Aprire `/admin` nel frontend: prima password locale scelta dall'utente (almeno 12 caratteri), poi sessione HttpOnly/SameSite Strict di otto ore. Salt e hash PBKDF2-HMAC-SHA256 (310.000 iterazioni) in `.local/data/private/admin-credential.json`, mai password in chiaro o Git. Sessioni in memoria: dopo riavvio si accede di nuovo. Nessun account o chiave nuova presso fornitori.
 
@@ -154,9 +154,31 @@ Per consultare il saldo completo nel grafico usare «Fine» accanto alla data: i
 
 Strategie: `CALIBRATED` sola calibrazione; `SIGNALS` calibrazione e verifica delle statistiche; `FILTERED` calibrazione e filtri sulle categorie; `ADAPTIVE` combinazione completa. Prima di ogni settimana si ammettono solo risultati già disponibili; previsioni originali e grezze di controllo sono deduplicate per partita/modalità, con precedenza al nuovo controllo. I controlli grezzi vengono conservati anche per le partite sulle quali la selezione finale si astiene. Il training usa sempre sette precedenti di campionato, con entrambe le modalità coppe.
 
-La calibrazione regolarizzata usa almeno 100 previsioni concluse, split cronologico 70/30 (minimi 60/30, simultanei insieme), Brier e log loss. La correzione deve migliorare entrambi; in caso contrario non viene applicata. Nessun esito sotto i criteri grezzi originali viene promosso solo dalla correzione.
+Le campagne già salvate con `lab-poisson-learning-v2` conservano la calibrazione regolarizzata su almeno 100 previsioni concluse, split cronologico 70/30 (minimi 60/30, simultanei insieme), Brier e log loss. La correzione deve migliorare entrambi; in caso contrario non viene applicata. Nessun esito sotto i criteri grezzi originali viene promosso solo dalla correzione. I nuovi esperimenti e i ricalcoli autorizzati usano la verifica condizionale v3 descritta sotto.
 
 La verifica dei segnali sopprime un gruppo alle medie del training su almeno 40 osservazioni del suffisso, ammesse solo dopo la disponibilità di tutti gli esiti del training di verifica. Richiede miglioramento della devianza almeno 1% in entrambe le metà; disabilita al massimo un gruppo e riaddestra sul prefisso completo. I filtri richiedono almeno 200 osservazioni, sei settimane, 30 casi e 30 confronti per metà, ROI negativo e inferiore di almeno due punti al confronto in entrambe, e limite superiore esplorativo negativo sul ritorno unitario con raggruppamento settimanale (moltiplicatore 2,58). Soglie esplorative predefinite, nessuna prova causale né correzione formale delle ricerche multiple.
+
+### Verifica corrente dei mercati alternativi e ricalcolo nello stesso ID
+
+Gli esperimenti ricalcolati con `lab-poisson-market-v3` conservano tutte le quote candidate che superano i criteri grezzi originali, comprese linee, bookmaker e mercati alternativi. In `lab_market_frame` sono salvati input, probabilità grezze, prima scelta e scelte delle tre politiche diagnostiche, senza risultato del target. L'esito entra nell'apprendimento soltanto in un taglio successivo alla sua disponibilità.
+
+Calibratore con intercetta e pendenza per tipo/periodo/esito, regolarizzato verso un modello globale preparato sullo stesso prefisso. Peso complessivo uno per incontro in ciascun calibratore. Almeno 100 incontri distinti, 60 di preparazione e 30 di verifica. Confine comune per settimane di previsione circa 70/30; dal training sono rimossi tutti gli esiti non disponibili prima della prima previsione di verifica. Correzione accettata solo con Brier migliorato almeno 0,001 e log loss inferiore; altrimenti si verificano le probabilità grezze. Fasce grezze 50–60, 60–70, 70–80 e 80–100%: almeno 15 incontri di verifica, 10 sopra le soglie di proposta e nessuna sovrastima oltre 0,02 più due errori standard dei residui per incontro. Nessuna estrapolazione oltre l'intervallo di training esteso di 0,025; nessun ripiego su una calibrazione globale per mercati privi di verifica.
+
+I filtri di campionato, calendario e condizioni precedenti vengono verificati separatamente per mercato. Un rappresentante per incontro/mercato impedisce che linee e bookmaker gonfino il supporto delle regole. Un'esclusione non si estende agli altri mercati della partita. La selezione confronta tutte le alternative ammesse; senza evidenza o quota idonea si astiene. La pagina Modello espone supporti, fasce, date dei due blocchi e tre controlli sulle sole giocate già concluse: sola calibrazione con alternative, calibrazione/filtri senza sostituzioni, politica completa. Non sono campagne aggiuntive e il confronto non rende indipendente uno storico già osservato.
+
+Per un ricalcolo **esplicitamente autorizzato** di un esperimento storico completo, da `backend` dopo build e test:
+
+```powershell
+java -jar target/masterbet-backend-0.1.0.jar --lab-action=recalculate --lab-run=ID_ESPERIMENTO --server.port=0 --masterbet.odds-api-key=
+```
+
+Il comando usa un job esclusivo `calculate` e rifiuta la strategia `BASELINE`. Il percorso completo verifica l'impronta delle sorgenti; quello rapido riusa le previsioni congelate, come descritto sotto. Non avvia download, non crea una campagna o una copia di backup dell'esperimento. Conserva ID, nome, configurazione e data di creazione; prepara tutti gli step in memoria mentre la versione attuale resta consultabile. Pubblica solo alla fine, in una singola transazione, sostituendo step/proposte/previsioni di controllo di quell'ID. Gli spoiler della sola campagna ricalcolata vengono rimossi perché il mercato associato a un ID di giocata può cambiare; gli esiti congelati restano conservati e vengono integrati per i nuovi incontri. Un errore o un'interruzione prima della pubblicazione lascia intatta la versione precedente; un errore nella pubblicazione provoca rollback. Il comando non autorizza automaticamente il ricalcolo di altre campagne.
+
+V12 aggiunge campi opzionali `learning.markets` alle risposte degli step; le campagne precedenti continuano a essere leggibili con il formato originale. Nessun nuovo endpoint HTTP o modalità mock; tipi, pagina e stub Angular aggiornati.
+
+La versione corrente `lab-poisson-market-v4` aggiunge `learning.markets.replacements`. Le sostituzioni sono osservate alla data della loro previsione, prima del controllo di promozione, e valutate solo una volta concluse: 30 incontri, sei settimane, dieci per metà, ROI positivo nei due blocchi e limiti inferiori esplorativi positivi per ROI e differenza netta abbinata alla prima scelta. La prima scelta resta soggetta ai controlli di probabilità/mercato già descritti. Nessun divieto fisso delle alternative: i casi rifiutati restano osservabili per apprendere nelle settimane successive. La pagina Modello espone motivi e supporti.
+
+Se `lab_market_frame` e gli esiti congelati sono completi, il comando `recalculate` usa automaticamente il ricalcolo rapido: modelli dei gol e input già calcolati vengono riutilizzati, mentre i calibratori e le decisioni sono ripercorsi per ogni taglio con soli esiti precedenti. Non legge nuovamente l'intero archivio quote né scarica dati; l'hash identifica il dataset congelato, non una nuova scansione delle eventuali sorgenti aggiornate. La pubblicazione mantiene lo stesso ID e gli stessi esiti salvati. Se non esistono frame, usa il calcolo completo con verifica dell'impronta delle sorgenti. Auditare anche le impronte dei modelli, degli input/quote e degli esiti quando si usa questo percorso.
 
 Da `backend`, sostituendo l'ID con quello restituito da `GET /api/lab/runs`:
 

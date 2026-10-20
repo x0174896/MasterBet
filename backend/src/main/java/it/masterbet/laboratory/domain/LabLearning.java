@@ -55,7 +55,27 @@ public final class LabLearning {
       Calibration calibration,
       List<Rule> rules,
       List<LabSignalAudit.Check> signals,
-      Map<String, Integer> rejectedCandidates) {
+      Map<String, Integer> rejectedCandidates,
+      LabMarketLearning.Snapshot markets) {
+    public Snapshot(
+        String version,
+        int observations,
+        Instant latestResult,
+        Calibration calibration,
+        List<Rule> rules,
+        List<LabSignalAudit.Check> signals,
+        Map<String, Integer> rejectedCandidates) {
+      this(
+          version,
+          observations,
+          latestResult,
+          calibration,
+          rules,
+          signals,
+          rejectedCandidates,
+          null);
+    }
+
     public Snapshot {
       rules = rules == null ? List.of() : List.copyOf(rules);
       signals = signals == null ? List.of() : List.copyOf(signals);
@@ -167,7 +187,7 @@ public final class LabLearning {
     return new Calibration(past.size(), split, n, offset, raw / n, adjusted / n, accepted);
   }
 
-  private List<Rule> rules(List<Observation> past) {
+  List<Rule> rules(List<Observation> past) {
     if (past.size() < 200) return List.of();
     // Calendar blocks prevent a busy week from masquerading as a large independent sample.
     var weeks = past.stream().map(o -> week(o.settledAt())).distinct().sorted().toList();

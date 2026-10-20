@@ -36,7 +36,7 @@ Navigazione dalla prima proposta effettiva della modalità/campionato. Tutte le 
 
 Operativo separato: tempo reale, prossimi sette giorni, nessun rewind/invio puntate. Il successivo download indipendente dei risultati permette di liquidare gli incontri conclusi.
 
-## Ricerca adattiva e confronto delle campagne
+## Ricerca adattiva iniziale e confronto delle campagne
 
 La strategia `BASELINE` conserva il metodo originale. Gli esperimenti ereditano periodo, competizioni e utile obiettivo da una campagna storica originale conclusa, creando nuovi modelli/step/proposte senza download o riconciliazione delle sorgenti. `CALIBRATED` verifica soltanto la calibrazione, `SIGNALS` aggiunge il controllo dei gruppi statistici, `FILTERED` aggiunge i filtri sulle categorie, `ADAPTIVE` li combina. Queste strategie sperimentali sono limitate alla modalità storica.
 
@@ -51,6 +51,32 @@ I filtri osservano categorie di mercato/periodo/esito, campionato/stagione, fasc
 La selezione applica la calibrazione e le esclusioni a ciascun candidato prima di scegliere la migliore singola ammessa. Un'alternativa può quindi sostituire la vecchia proposta; se nessuna supera i criteri, si registra l'astensione con motivazione. I confronti ottenuti eliminando soltanto vecchie giocate non predeterminano il risultato del nuovo calcolo.
 
 Modelli, correzione, supporti, gruppi soppressi, categorie e contatori degli scarti sono salvati nello step; previsioni grezze in una tabella separata. Gli esiti delle campagne sono congelati per preservare il saldo da future correzioni dell'archivio. Il confronto `/campagne` mostra saldo, ROI sul puntato, volume, discesa dal picco e qualità delle probabilità; esiti finali e taglio simulato sono esplicitamente distinti. Anche con il rispetto automatico dei prefissi temporali, le ipotesi sono state sviluppate osservando questo storico: il confronto resta retrospettivo, non una conferma indipendente di rendimento futuro.
+
+## Calibrazione condizionale e mercati alternativi, versione 3
+
+La correzione iniziale era appresa sulle prime scelte grezze ma applicata anche ad altri mercati: una popolazione diversa. La versione 3 conserva, prima della selezione finale, tutte le quote che superano probabilità grezza 50%, EV grezzo 5% e quota massima 5. Ogni record per incontro/modalità contiene input e previsioni di tutte le linee/bookmaker/esiti idonei, senza risultato. Anche una partita senza proposta finale contribuisce ai controlli dopo la conclusione; nessuna promozione a posteriori di una previsione mai prodotta.
+
+Le previsioni vengono raggruppate per tipo di mercato, periodo ed esito. Per ogni gruppo si stima una regressione logistica su `logit(probabilità grezza)`, con intercetta limitata a ±3, pendenza tra 0 e 2 e penalizzazione 10 verso un modello globale. Il globale usa solo il medesimo prefisso di training. Ogni incontro ha peso totale uno nel calibratore, indipendentemente dal numero di quote; supporti minimi contati su incontri distinti: 100 complessivi, 60 nel training, 30 nella verifica.
+
+Il taglio circa 70/30 viene scelto fra settimane di previsione, conservando insieme i simultanei. Il training ammette soltanto previsioni precedenti al confine e risultati disponibili strettamente prima del confine. Le previsioni di verifica partono dal confine: nessun risultato del training è successivo alla loro generazione. La correzione deve migliorare Brier di almeno 0,001 e log loss; in caso contrario le probabilità grezze possono essere usate soltanto nelle fasce verificate.
+
+Il controllo è distinto per probabilità grezza 50–60, 60–70, 70–80, 80–100% e comprende il sottoinsieme che supera probabilità/EV dopo la correzione. Servono 15 incontri di verifica nella fascia e 10 nel sottoinsieme. La sovrastima media non deve superare 0,02 più due errori standard dei residui, aggregati per incontro. Input oltre il minimo/massimo di training esteso di 0,025 non sono supportati. Sono soglie esplorative predefinite: non sono un intervallo di rendimento garantito né una correzione formale della selezione tra molti mercati.
+
+Le regole adattive precedenti sono valutate all'interno di ciascun mercato, su un solo rappresentante per partita scelto per EV grezzo. Un calendario congestionato o una stagione negativa possono quindi escludere quel mercato senza vietare le alternative. Restano i supporti, i due blocchi cronologici e il controllo settimanale descritti sopra. La politica sceglie il miglior EV fra tutte le quote confermate; nessuna quota è imposta per completare il calendario.
+
+Per ogni incontro sono conservate anche le scelte senza filtri e senza sostituzioni. Il confronto diagnostico nella pagina Modello liquida solo quelle concluse prima del taglio e non guida retroattivamente la selezione. Isola gli effetti delle regole usando lo stesso modello, non equivale a tre campagne indipendenti o a una prova futura.
+
+Il ricalcolo richiesto dall'utente sostituisce il solo esperimento autorizzato nello stesso ID, mantenendo nome, configurazione e data di creazione. Tutti gli step vengono preparati prima della pubblicazione atomica; la campagna originale e le sorgenti non sono riscritte e non viene creata un'altra campagna di backup. Il comando dedicato e i vincoli sono in `setup.md`. Le campagne già salvate con i metodi precedenti conservano il loro comportamento e i loro esiti.
+
+## Promozione delle sostituzioni, versione 4
+
+La calibrazione per mercato ha migliorato alcune probabilità ma non il saldo delle alternative: il ricalcolo intermedio è rimasto negativo. La versione 4 non considera sufficiente un EV stimato alto per sostituire la prima scelta. In ogni settimana conserva la migliore alternativa per famiglia dopo calibrazione e condizioni, prima del nuovo controllo di promozione. Il candidato e la quota sono scelti senza il risultato, anche quando non vengono giocati; gli esiti entrano nei controlli soltanto dopo la loro disponibilità. Non si ricostruisce a posteriori l'alternativa vincente usando una calibrazione addestrata sul suo stesso esito.
+
+Per famiglia servono almeno 30 incontri distinti in sei settimane di previsione e almeno dieci casi in ciascuna metà cronologica. Entrambi i blocchi devono avere ROI positivo. Si calcolano inoltre il ROI complessivo e la differenza netta per incontro rispetto alla prima scelta grezza sugli stessi incontri; i limiti inferiori `stima − 2 errori standard`, aggregando i residui per settimana di previsione, devono essere positivi per entrambi. La differenza usa la stessa unità di utile obiettivo e le puntate delle due quote, non un numero diverso di incontri. Sono controlli esplorativi, non p-value calibrati o una garanzia sul futuro.
+
+Una sostituzione priva di conferma resta nei controlli, senza essere pubblicata come giocata. Se la prima scelta supera calibrazione e condizioni resta disponibile; altrimenti si attende. Le alternative possono essere ammesse in una finestra successiva senza una blacklist permanente. La prova su questo storico non ha ammesso alcuna famiglia alternativa: il saldo finale positivo deriva dalle prime scelte rimaste, con meno volume, non dimostra che le alternative siano tutte perdenti.
+
+Quando modelli e previsioni grezze sono già congelati, il ricalcolo riusa questi dati e ripercorre soltanto calibrazione, apprendimento e selezione per ogni settimana. Modelli dei gol, input, quote e risultati restano identici; non si ripete un addestramento dei gol con dati invariati né la scansione di milioni di quote. La versione corrente contiene 587 singole/+99,78 euro senza coppe e 557/+14,71 euro con coppe. Anche queste scelte metodologiche sono state sviluppate sullo stesso storico già esaminato: nessuna validazione futura indipendente e probabilità ancora sovrastimate.
 
 ## Campagna e accesso
 
