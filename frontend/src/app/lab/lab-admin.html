@@ -181,6 +181,62 @@
       </button>
     </div>
     <div class="card card-body mb-4">
+      <h3 class="h5">Nuova campagna sperimentale dai dati già scaricati</h3>
+      <p class="small text-secondary">
+        Conserva la campagna originale e usa lo stesso periodo, campionati e utile obiettivo.
+        Riaddestra entrambe le modalità senza scaricare risultati o quote. Le decisioni adattive
+        usano soltanto osservazioni concluse prima di ogni finestra simulata.
+      </p>
+      <div class="row g-3 align-items-end">
+        <div class="col-md-6">
+          <label for="experiment-reference" class="form-label">Campagna originale</label>
+          <select id="experiment-reference" class="form-select" [(ngModel)]="referenceRunId">
+            <option value="">
+              {{
+                referenceRuns().length
+                  ? 'Ultima campagna originale completa'
+                  : 'Nessuna campagna originale completa'
+              }}
+            </option>
+            @for (run of referenceRuns(); track run.id) {
+              <option [value]="run.id">
+                {{ state.runLabel(run) }} · {{ run.config.from }} – {{ run.config.to }}
+              </option>
+            }
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="experiment-name" class="form-label">Nome della nuova campagna</label>
+          <input
+            id="experiment-name"
+            class="form-control"
+            maxlength="120"
+            [(ngModel)]="experimentName"
+          />
+        </div>
+        <div class="col-md-7">
+          <label for="experiment-strategy" class="form-label">Esperimento</label>
+          <select id="experiment-strategy" class="form-select" [(ngModel)]="experimentStrategy">
+            <option value="CALIBRATED">Sola calibrazione delle probabilità</option>
+            <option value="SIGNALS">Calibrazione e verifica delle statistiche</option>
+            <option value="FILTERED">Calibrazione e filtri sulle categorie</option>
+            <option value="ADAPTIVE">
+              Calibrazione, verifica delle statistiche e filtri adattivi
+            </option>
+          </select>
+        </div>
+        <div class="col-md-5">
+          <button
+            class="btn btn-primary w-100"
+            [disabled]="busy() || jobs().some(jobRunning) || !referenceRuns().length"
+            (click)="startExperiment()"
+          >
+            Crea nuova campagna offline
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="card card-body mb-4">
       <h3 class="h5">Calcola entrambe le modalità</h3>
       <p class="small text-secondary">
         Usa solo gli archivi locali. Addestra il modello ogni settimana e salva una singola per ogni

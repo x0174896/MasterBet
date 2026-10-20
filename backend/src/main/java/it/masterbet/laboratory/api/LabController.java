@@ -19,6 +19,7 @@ public class LabController {
   private final LabAdminAccess access;
   private final LabLegacyReset reset;
   private final LabCampaignService campaign;
+  private final LabExperimentService experiments;
 
   public LabController(
       LabQueryService query,
@@ -28,7 +29,8 @@ public class LabController {
       LabSimulationService simulation,
       LabAdminAccess access,
       LabLegacyReset reset,
-      LabCampaignService campaign) {
+      LabCampaignService campaign,
+      LabExperimentService experiments) {
     this.query = query;
     this.runs = runs;
     this.jobs = jobs;
@@ -37,6 +39,7 @@ public class LabController {
     this.access = access;
     this.reset = reset;
     this.campaign = campaign;
+    this.experiments = experiments;
   }
 
   @GetMapping("/coverage")
@@ -47,6 +50,22 @@ public class LabController {
   @GetMapping("/runs")
   public List<LabRunRepository.Run> runs() {
     return runs.runs();
+  }
+
+  @GetMapping("/campaigns")
+  public List<LabQueryService.Campaign> campaigns(
+      @RequestParam(required = false) Instant cursor,
+      @RequestParam(defaultValue = "0") int competition) {
+    return query.campaigns(cursor, competition);
+  }
+
+  public record ExperimentRequest(String referenceRunId, String name, String strategy) {}
+
+  @PostMapping("/admin/experiments")
+  public LabJobs.Status experiment(
+      @RequestBody ExperimentRequest body, HttpServletRequest request) {
+    check(request);
+    return experiments.start(body.referenceRunId(), body.name(), body.strategy());
   }
 
   @GetMapping("/workspace")

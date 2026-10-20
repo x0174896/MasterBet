@@ -2,6 +2,8 @@
 
 **Stato: MODELLO FACOLTATIVO, NESSUNA IMPLEMENTAZIONE ATTESTATA.** La presenza di questo file non significa che esistano interceptor, endpoint simulati, pannelli o comandi mock. Compilarlo soltanto se la modalità mock fa parte del progetto autorizzato.
 
+Verifica MasterBet del 20 ottobre 2026: nessuna modalità mock applicativa o comando `build:mock` presente. I soli stub HTTP dei test Angular sono aggiornati per `GET /api/lab/campaigns`, `POST /api/lab/admin/experiments` e i campi opzionali delle campagne/decisioni adattive. Contratto reale e comandi in `setup.md` e `frontend/README.md`.
+
 ## Scopo e avvio
 
 Descrivere quali flussi si possono provare senza backend e quali restano esclusi. Indicare i comandi realmente configurati, i prerequisiti e come riconoscere visivamente la modalità mock.

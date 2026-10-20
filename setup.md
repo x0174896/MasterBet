@@ -1,6 +1,6 @@
 # Predisposizione, verifiche e avvio
 
-Aggiornato su Windows il 19 ottobre 2026 per il laboratorio multicampionato. Eseguire i comandi dalla cartella indicata. Usare `develop` per lo sviluppo e `main` per le versioni integrate.
+Aggiornato su Windows il 20 ottobre 2026 per il laboratorio multicampionato e gli esperimenti adattivi. Eseguire i comandi dalla cartella indicata. Usare `develop` per lo sviluppo e `main` per le versioni integrate.
 
 ## Versioni adottate
 
@@ -87,7 +87,7 @@ La verifica TLS resta attiva. Per l'importazione Java usare gli stessi due param
 
 ## Laboratorio multicampionato corrente
 
-Flyway V5–V10 aggiunge archivio competizioni/partite/quote/revisioni, job/checkpoint, lock di avvio, elaborazioni/step/proposte e spoiler. V10 aggiunge `lab_campaign_stage`, `lab_fixture_alignment` e proprietà/errori tecnici dei job. V1–V4 e i dati sorgenti precedenti restano conservati. Nessuna dipendenza applicativa aggiunta. Il formatter Google Java Format 1.37.0 è stato usato solo come strumento temporaneo locale, non è necessario per avvio/build.
+Flyway V5–V11 aggiunge archivio competizioni/partite/quote/revisioni, job/checkpoint, lock di avvio, elaborazioni/step/proposte e spoiler. V10 aggiunge `lab_campaign_stage`, `lab_fixture_alignment` e proprietà/errori tecnici dei job; V11 esiti congelati e previsioni grezze di controllo per campagna. V1–V4 e i dati sorgenti precedenti restano conservati. Nessuna dipendenza applicativa aggiunta. Il formatter Google Java Format 1.37.0 è stato usato solo come strumento temporaneo locale, non è necessario per avvio/build.
 
 Aprire `/admin` nel frontend: prima password locale scelta dall'utente (almeno 12 caratteri), poi sessione HttpOnly/SameSite Strict di otto ore. Salt e hash PBKDF2-HMAC-SHA256 (310.000 iterazioni) in `.local/data/private/admin-credential.json`, mai password in chiaro o Git. Sessioni in memoria: dopo riavvio si accede di nuovo. Nessun account o chiave nuova presso fornitori.
 
@@ -123,6 +123,7 @@ Backup/reset legacy: dalla radice eseguire `scripts/backup-lab.ps1` sul solo DB 
 |---|---|
 | `GET /api/lab/coverage` | Catalogo, risultati, quote riconciliate/da abbinare, squadre con sette precedenti e intervallo coperto |
 | `GET /api/lab/runs` | Elaborazioni, stato, configurazione, hash, tempi reali/simulati |
+| `GET /api/lab/campaigns` | Tutte le campagne e metriche separate per modalità; `cursor` facoltativo e `competition=0` |
 | `GET /api/lab/workspace` | `runId`, `cursor` ISO UTC facoltativo, `cups` boolean, `competition` ID Calcio o 0, `page` da 0; 50 proposte, saldi, sequenza completa del grafico, modello dello step consultabile |
 | `GET /api/lab/statistics` | `runId`, `cursor`, `cups`, `competition`; statistiche per competizione/stagione con dati entro il taglio |
 | `POST /api/lab/reveal` | `{runId,betId}`; spoiler persistito, nessun effetto monetario |
@@ -133,6 +134,7 @@ Backup/reset legacy: dalla radice eseguire `scripts/backup-lab.ps1` sul solo DB 
 | `POST /api/lab/admin/catalog?refresh=false` | Job del catalogo |
 | `POST /api/lab/admin/results` / `quotes` | `{competitionIds:[],from,to,bookmakers:[...],refresh:false}`; vuoto=tutti i campionati comuni pertinenti; date da gennaio 2026, download fino a oggi+14 giorni |
 | `POST /api/lab/admin/calculate` | `{from,to,competitionIds:[],unitProfit:5,mode:"HISTORICAL"}` oppure `OPERATIONAL`; storico fino a oggi, operativo dal tempo reale per sette giorni |
+| `POST /api/lab/admin/experiments` | `{referenceRunId,name,strategy}`; nuova campagna storica sui dati locali con parametri ereditati; strategie e controlli sotto |
 | `POST /api/lab/admin/campaign` | `{download:{from,to,competitionIds:[],bookmakers:[...],refresh:false},unitProfit:5}`; campagna storica sequenziale, risposta job `campaign`; fasi `results`, `reconcile`, `quotes`, `reconcile`, `validate`, `calculate` |
 | `POST /api/lab/admin/reset-legacy` | Richiede backup verificato, restituisce numero righe archiviate |
 
@@ -141,6 +143,39 @@ Tutte le scritture `/admin` richiedono `X-MasterBet-Admin: 1`. Serve anche la se
 Stati job: `RUNNING`, `SUCCEEDED`, `PARTIAL`, `FAILED`, `INTERRUPTED`. La copertura parziale non viene nascosta. Nessuna modalità mock o comando `build:mock`: stub solo nei test aggiornati. I vecchi endpoint scenario/betting/advance rispondono 410 per default (`masterbet.legacy-api-enabled=false` implicito); il profilo test li abilita per regressione. Non attivare quel flag nell'uso ordinario.
 
 `Calcio` raw in `.local/data/calcio`, `OddsPapi` in `.local/data/raw`; revisioni immutabili e hash verificati. Primo fischio finale sconosciuto: disponibilità prudenziale kickoff +24 ore, esposta nelle proposte. Metodo, soglie, deroga quote e limiti in [docs/HISTORICAL_LAB_METHOD.md](docs/HISTORICAL_LAB_METHOD.md).
+
+## Campagne sperimentali offline
+
+Flyway V11 crea `lab_run_result` e `lab_learning_prediction`: copia gli esiti delle campagne esistenti senza riscrivere dati sorgenti o proposte. Nuovi risultati per campagne operative ancora in attesa restano leggibili dalla fonte; gli esiti storici congelati prevalgono sulle successive correzioni. Eseguire un backup completo con `scripts/backup-lab.ps1` prima dell'aggiornamento del database locale. Nessuna nuova dipendenza o cambio di versione.
+
+Aprire `/campagne` per confrontare tutte le elaborazioni e selezionare quella consultabile nelle altre pagine. Riepilogo finale esplicitamente distinto dal confronto al taglio simulato. Selezione memorizzata nel browser; il cambio di campagna conserva l'istante, eventualmente limitato al periodo disponibile. In `/admin`, «Nuova campagna sperimentale» eredita periodo, competizioni e utile obiettivo da una campagna `BASELINE` storica conclusa. Non avvia catalogo, risultati, quote o riconciliazione.
+
+Per consultare il saldo completo nel grafico usare «Fine» accanto alla data: invia l'istante esatto dell'ultimo esito, comprese le frazioni di secondo omesse dalla visualizzazione al minuto. Il comando è disabilitato nella modalità operativa.
+
+Strategie: `CALIBRATED` sola calibrazione; `SIGNALS` calibrazione e verifica delle statistiche; `FILTERED` calibrazione e filtri sulle categorie; `ADAPTIVE` combinazione completa. Prima di ogni settimana si ammettono solo risultati già disponibili; previsioni originali e grezze di controllo sono deduplicate per partita/modalità, con precedenza al nuovo controllo. I controlli grezzi vengono conservati anche per le partite sulle quali la selezione finale si astiene. Il training usa sempre sette precedenti di campionato, con entrambe le modalità coppe.
+
+La calibrazione regolarizzata usa almeno 100 previsioni concluse, split cronologico 70/30 (minimi 60/30, simultanei insieme), Brier e log loss. La correzione deve migliorare entrambi; in caso contrario non viene applicata. Nessun esito sotto i criteri grezzi originali viene promosso solo dalla correzione.
+
+La verifica dei segnali sopprime un gruppo alle medie del training su almeno 40 osservazioni del suffisso, ammesse solo dopo la disponibilità di tutti gli esiti del training di verifica. Richiede miglioramento della devianza almeno 1% in entrambe le metà; disabilita al massimo un gruppo e riaddestra sul prefisso completo. I filtri richiedono almeno 200 osservazioni, sei settimane, 30 casi e 30 confronti per metà, ROI negativo e inferiore di almeno due punti al confronto in entrambe, e limite superiore esplorativo negativo sul ritorno unitario con raggruppamento settimanale (moltiplicatore 2,58). Soglie esplorative predefinite, nessuna prova causale né correzione formale delle ricerche multiple.
+
+Da `backend`, sostituendo l'ID con quello restituito da `GET /api/lab/runs`:
+
+```powershell
+java -jar target/masterbet-backend-0.1.0.jar --lab-action=experiment --lab-reference=ID_CAMPAGNA_ORIGINALE --lab-strategy=ADAPTIVE --lab-name="Ricerca segnali" --server.port=0 --masterbet.odds-api-key=
+```
+
+Il job CLI è `calculate`, con le stesse esclusioni reciproche dei calcoli admin. Terminato o interrotto, i risultati precedenti restano conservati. Le campagne originali deserializzate senza i nuovi campi sono `BASELINE`, nome vuoto e riferimento nullo; non vengono aggiornate retroattivamente.
+
+API additive: `GET /api/lab/campaigns` con `cursor` facoltativo e `competition=0`; `POST /api/lab/admin/experiments` con `{referenceRunId,name,strategy}`, sessione e `X-MasterBet-Admin: 1`. `GET /runs` emette e `POST /calculate` accetta i campi opzionali `name`, `strategy`, `referenceRunId`; gli step hanno `learning` opzionale con calibrazione, gruppi, regole e contatori degli scarti. I vecchi corpi restano validi. Stub frontend aggiornati; nessuna modalità mock applicativa.
+
+Audit indipendente dalla radice, con Python documentato in `environment.md` e backend locale avviato:
+
+```powershell
+python -B scripts/audit-lab-campaigns.py --reference ID_ORIGINALE --capture .local/audit/campagna-prima.json
+python -B scripts/audit-lab-campaigns.py --reference ID_ORIGINALE --verify .local/audit/campagna-prima.json --run ID_ORIGINALE --run ID_NUOVO --report .local/audit/campagne-verifica.json
+```
+
+Il primo comando va eseguito prima dell'esperimento; rifiuta di sovrascrivere un manifest. I controlli verificano impronte delle righe originali e contatori sorgenti/job di download, probabilità dai pesi e calibrazione salvati, soglie, puntate, esiti e tutti i punti dei grafici. Database e HTTP limitati a localhost; nessuna scrittura DB o chiamata alle fonti. Contatori invariati non sostituiscono il controllo del contenuto: confrontare anche `dataHash` delle campagne, calcolato sull'intero archivio locale. Le regole e i pesi sono sperimentali su uno storico già osservato.
 
 ## Esperimento norvegese precedente — comandi di archivio
 

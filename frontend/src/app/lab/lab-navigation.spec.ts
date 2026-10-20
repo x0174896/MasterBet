@@ -10,7 +10,10 @@ describe('Navigazione del laboratorio', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
-        { provide: LabApi, useValue: { coverage: () => of([]), runs: () => of([]) } },
+        {
+          provide: LabApi,
+          useValue: { coverage: () => of([]), runs: () => of([]), campaigns: () => of([]) },
+        },
       ],
     });
     const harness = await RouterTestingHarness.create('/andamento');
@@ -20,6 +23,8 @@ describe('Navigazione del laboratorio', () => {
     expect(harness.routeNativeElement?.textContent).not.toContain('Andamento del guadagno netto');
     await harness.navigateByUrl('/modello');
     expect(harness.routeNativeElement?.textContent).toContain('Modello e ricerca dei pattern');
-    expect(harness.routeNativeElement?.querySelectorAll('nav a').length).toBe(5);
+    expect(harness.routeNativeElement?.querySelectorAll('nav a').length).toBe(6);
+    await harness.navigateByUrl('/campagne');
+    expect(harness.routeNativeElement?.textContent).toContain('Campagne e confronto');
   });
 });

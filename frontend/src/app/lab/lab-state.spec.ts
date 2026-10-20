@@ -27,6 +27,7 @@ describe('Stato del laboratorio', () => {
     model: [],
   });
   beforeEach(() => {
+    localStorage.clear();
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
@@ -92,5 +93,49 @@ describe('Stato del laboratorio', () => {
     http.expectOne('/api/lab/coverage').flush({}, { status: 500, statusText: 'Error' });
     expect(http.expectOne('/api/lab/runs').cancelled).toBe(true);
     expect(state.error()).toContain('backend');
+  });
+  it('cambia campagna conservando il tempo, annulla richieste superate e ricorda la scelta', () => {
+    load();
+    const other = { ...run, id: 'run-2' };
+    state.runs.set([run, other]);
+    state.setRun('run-2');
+    const previous = http.expectOne((r) => r.url === '/api/lab/workspace');
+    expect(previous.request.params.get('runId')).toBe('run-2');
+    expect(previous.request.params.get('cursor')).toBe('2026-05-20T12:00:00Z');
+    state.setRun('run-1');
+    expect(previous.cancelled).toBe(true);
+    const latest = http.expectOne((r) => r.url === '/api/lab/workspace');
+    latest.flush(workspace());
+    http.expectOne((r) => r.url === '/api/lab/statistics').flush([]);
+    expect(localStorage.getItem('masterbet.campaign')).toBe('run-1');
+    state.setRun('unknown');
+    http.expectNone((r) => r.url === '/api/lab/workspace');
+  });
+  it('ripristina la campagna scelta anche quando esiste una campagna più recente', () => {
+    localStorage.setItem('masterbet.campaign', 'run-1');
+    state.init();
+    http.expectOne('/api/lab/coverage').flush([]);
+    http.expectOne('/api/lab/runs').flush([{ ...run, id: 'newer' }, run]);
+    const request = http.expectOne((r) => r.url === '/api/lab/workspace');
+    expect(request.request.params.get('runId')).toBe('run-1');
+    request.flush(workspace());
+    http.expectOne((r) => r.url === '/api/lab/statistics').flush([]);
+  });
+  it('raggiunge l’ultimo esito senza perdere secondi e frazioni e rispetta la modalità operativa', () => {
+    load();
+    const end = '2026-05-31T23:59:59.526123400Z';
+    state.workspace.set({ ...workspace(), to: end });
+    state.goToEnd();
+    const request = http.expectOne((r) => r.url === '/api/lab/workspace');
+    expect(request.request.params.get('cursor')).toBe(end);
+    request.flush({ ...workspace(), to: end, cursor: end });
+    http.expectOne((r) => r.url === '/api/lab/statistics').flush([]);
+    expect(state.cursor()).toBe(end);
+    state.workspace.set({
+      ...workspace(),
+      run: { ...run, config: { ...run.config, mode: 'OPERATIONAL' } },
+    });
+    state.goToEnd();
+    http.expectNone((r) => r.url === '/api/lab/workspace');
   });
 });

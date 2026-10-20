@@ -1,5 +1,6 @@
 package it.masterbet.laboratory.application;
 
+import it.masterbet.betting.domain.MarketSettlement;
 import it.masterbet.betting.domain.ProfitTargetStaking;
 import it.masterbet.ingestion.infrastructure.RawResponseArchive;
 import it.masterbet.laboratory.domain.*;
@@ -16,7 +17,11 @@ import org.springframework.stereotype.Service;
 public class LabSimulationService {
   private record Row(LabMatch source, double[] x, double[] y) {}
 
-  private record Candidate(QuotedOutcome quote, double probability, double ev) {}
+  private record Candidate(
+      QuotedOutcome quote, double rawProbability, double probability, double ev) {}
+
+  private record Selection(
+      Optional<Candidate> best, Optional<Candidate> shadow, Map<String, Integer> rejected) {}
 
   private final LabRepository source;
   private final LabRunRepository runs;
@@ -25,6 +30,9 @@ public class LabSimulationService {
   private final LabDataValidation validation;
   private final LabFeatures features = new LabFeatures();
   private final LabPatternMiner patterns = new LabPatternMiner();
+  private final LabLearning learning = new LabLearning();
+  private final LabSignalAudit signalAudit = new LabSignalAudit();
+  private final MarketSettlement settlement = new MarketSettlement();
 
   public LabSimulationService(
       LabRepository source,
@@ -42,7 +50,8 @@ public class LabSimulationService {
   public Consumer<LabJobs.Progress> calculate(LabRunConfig config) {
     return progress -> {
       String id = UUID.randomUUID().toString();
-      source.reconcile();
+      // Calculation is strictly offline and never rewrites downloaded sources or alignments.
+      var reference = reference(config);
       var validated = new HashSet<>(validation.verify(config).eligible());
       Map<Integer, String> competitionNames = new HashMap<>();
       source.competitions().forEach(c -> competitionNames.put(c.id(), c.name()));
@@ -63,6 +72,11 @@ public class LabSimulationService {
               .filter(m -> !m.fixture().id().startsWith("odds:"))
               .toList();
       var priced = source.quotedFixtures();
+      Map<String, LabMatch> resultById = new HashMap<>();
+      all.forEach(m -> resultById.put(m.fixture().id(), m));
+      var referenceResults =
+          reference == null ? Map.<String, LabMatch>of() : runs.results(reference.id());
+      var referenceBets = reference == null ? List.<LabBet>of() : runs.bets(reference.id());
       progress.update("Verifica e hash degli archivi locali");
       String hash = source.fingerprint();
       runs.create(id, config, hash);
@@ -111,6 +125,10 @@ public class LabSimulationService {
         Map<Boolean, PoissonModel> previous = new HashMap<>();
         Map<Boolean, PoissonModel> previousAudit = new HashMap<>();
         Map<Boolean, Set<String>> previousAuditRows = new HashMap<>();
+        Map<Boolean, List<Integer>> previousDisabled = new HashMap<>();
+        Map<Boolean, Map<String, LabBet>> shadows = new HashMap<>();
+        shadows.put(false, new HashMap<>());
+        shadows.put(true, new HashMap<>());
         for (Instant cutoff = first;
             cutoff.isBefore(end);
             cutoff = cutoff.plus(Duration.ofDays(7))) {
@@ -135,6 +153,7 @@ public class LabSimulationService {
             PoissonModel model = null;
             Double mae = null;
             int validation = 0;
+            List<LabSignalAudit.Check> signalChecks = List.of();
             if (training.size() >= 25) {
               int split = Math.max(20, (int) (training.size() * .8));
               validation = training.size() - split;
@@ -160,13 +179,53 @@ public class LabSimulationService {
                 for (int k = 0; k < 4; k++) error += Math.abs(prediction[k] - row.y()[k]);
               }
               mae = validation == 0 ? null : error / (validation * 4);
+              if (Set.of("ADAPTIVE", "SIGNALS").contains(config.strategy())) {
+                Instant auditEnd =
+                    auditRows.stream()
+                        .map(r -> r.source().fixture().endedAt())
+                        .max(Comparator.naturalOrder())
+                        .orElse(asOf);
+                var safeValidation =
+                    training.subList(split, training.size()).stream()
+                        .filter(r -> r.source().fixture().kickoff().isAfter(auditEnd))
+                        .toList();
+                signalChecks =
+                    signalAudit.evaluate(
+                        audit,
+                        safeValidation.stream().map(Row::x).toList(),
+                        safeValidation.stream().map(Row::y).toList());
+              }
+              var disabled = LabSignalAudit.disabled(signalChecks);
               model =
                   trainer.train(
-                      training.stream().map(Row::x).toArray(double[][]::new),
+                      training.stream()
+                          .map(r -> LabSignalAudit.mask(r.x(), disabled))
+                          .toArray(double[][]::new),
                       training.stream().map(Row::y).toArray(double[][]::new),
-                      previous.get(cups));
+                      disabled.equals(previousDisabled.getOrDefault(cups, List.of()))
+                          ? previous.get(cups)
+                          : null);
               previous.put(cups, model); // the warm start was fitted on an earlier prefix only
+              previousDisabled.put(cups, disabled);
             }
+            LabLearning.Snapshot learned = null;
+            if (reference != null) {
+              Map<String, LabLearning.Observation> observations = new HashMap<>();
+              for (var bet : referenceBets)
+                if (bet.includeCupScores() == cups)
+                  observe(bet, referenceResults.get(bet.fixtureId()), asOf)
+                      .ifPresent(o -> observations.put(o.fixtureId(), o));
+              for (var bet : shadows.get(cups).values())
+                observe(bet, resultById.get(bet.fixtureId()), asOf)
+                    .ifPresent(o -> observations.put(o.fixtureId(), o));
+              learned =
+                  learning.fit(
+                      List.copyOf(observations.values()),
+                      asOf,
+                      Set.of("ADAPTIVE", "FILTERED").contains(config.strategy()),
+                      signalChecks);
+            }
+            Map<String, Integer> rejectedCandidates = new TreeMap<>();
             var mined =
                 patterns.mine(
                     training.stream()
@@ -182,6 +241,7 @@ public class LabSimulationService {
                                     r.y()))
                         .toList());
             List<LabBet> proposed = new ArrayList<>();
+            List<LabBet> shadowProposals = new ArrayList<>();
             Map<String, String> exclusions = new TreeMap<>();
             int excluded = 0;
             for (var target : targets) {
@@ -233,12 +293,52 @@ public class LabSimulationService {
               }
               // Selection receives a score-free fixture and frozen input, never
               // LabMatch/target.score.
-              var best =
+              var selection =
                   choose(
                       new GoalProbabilities(model.predict(input.values())),
                       source.quotes(target.fixture().id()),
                       target.fixture().kickoff(),
-                      config.mode().equals("OPERATIONAL") ? cutoff : null);
+                      config.mode().equals("OPERATIONAL") ? cutoff : null,
+                      learned,
+                      target.fixture().tournamentId(),
+                      target.season(),
+                      Arrays.stream(input.values()).boxed().toList());
+              selection
+                  .rejected()
+                  .forEach((key, count) -> rejectedCandidates.merge(key, count, Integer::sum));
+              // Raw best prediction is kept even if the calibrated policy abstains. Its result is
+              // admitted only in a later step, preventing selective learning from accepted bets.
+              if (reference != null && selection.shadow().isPresent()) {
+                var raw = selection.shadow().get();
+                shadows
+                    .get(cups)
+                    .put(
+                        target.fixture().id(),
+                        new LabBet(
+                            "shadow:" + target.fixture().id(),
+                            id,
+                            target.fixture().id(),
+                            target.fixture().tournamentId(),
+                            target.fixture().competition(),
+                            target.season(),
+                            target.fixture().home(),
+                            target.fixture().away(),
+                            target.fixture().kickoff(),
+                            cutoff,
+                            step,
+                            cups,
+                            raw.quote(),
+                            raw.rawProbability(),
+                            raw.rawProbability() * raw.quote().price().doubleValue() - 1,
+                            staking.stake(config.unitProfit(), raw.quote().price()),
+                            config.unitProfit(),
+                            List.of(),
+                            trainingHash,
+                            Arrays.stream(input.values()).boxed().toList(),
+                            "shadow-v1"));
+                shadowProposals.add(shadows.get(cups).get(target.fixture().id()));
+              }
+              var best = selection.best();
               if (best.isEmpty()) {
                 exclusions.put(
                     target.fixture().home()
@@ -247,14 +347,40 @@ public class LabSimulationService {
                         + " ("
                         + target.fixture().id()
                         + ")",
-                    "Nessuna quota attiva prepartita su mercati supportati con EV >= 5%,"
-                        + " probabilita >= 50% e quota <= 5");
+                    "Nessuna quota ammessa: EV >= 5%, probabilita >= 50%, quota <= 5"
+                        + (learned == null ? "" : "; controlli appresi: " + selection.rejected()));
                 excluded++;
                 continue;
               }
               var selected = best.get();
               var fixture = target.fixture();
               List<String> explanation = new ArrayList<>(input.evidence());
+              if (learned != null) {
+                explanation.add(
+                    String.format(
+                        Locale.ITALY,
+                        "Probabilita prima della calibrazione %.1f%%, dopo %.1f%%; %d osservazioni"
+                            + " pregresse. %s",
+                        100 * selected.rawProbability(),
+                        100 * selected.probability(),
+                        learned.observations(),
+                        learned.calibration().accepted()
+                            ? "Correzione verificata sul suffisso pregresso."
+                            : "Correzione non applicata: evidenza insufficiente o mancato"
+                                + " miglioramento."));
+                signalChecks.stream()
+                    .filter(LabSignalAudit.Check::disabled)
+                    .forEach(
+                        c ->
+                            explanation.add(
+                                "Gruppo statistico escluso dopo verifica: " + c.group()));
+              }
+              explanation.add(
+                  "Ultimo prezzo osservato "
+                      + Duration.between(selected.quote().observedAt(), target.fixture().kickoff())
+                          .toMinutes()
+                      + " minuti prima del calcio d'inizio; disponibilita storica, eseguibilita non"
+                      + " certificata.");
               explanation.add(
                   String.format(
                       Locale.ITALY,
@@ -285,8 +411,22 @@ public class LabSimulationService {
                       List.copyOf(explanation),
                       trainingHash,
                       Arrays.stream(input.values()).boxed().toList(),
-                      "lab-poisson-v1/features-" + input.values().length));
+                      (reference == null
+                              ? "lab-poisson-v1"
+                              : "lab-poisson-learning-v2/" + config.strategy())
+                          + "/features-"
+                          + input.values().length));
             }
+            if (learned != null)
+              learned =
+                  new LabLearning.Snapshot(
+                      learned.version(),
+                      learned.observations(),
+                      learned.latestResult(),
+                      learned.calibration(),
+                      learned.rules(),
+                      signalChecks,
+                      rejectedCandidates);
             runs.step(
                 new LabStep(
                     id,
@@ -304,8 +444,10 @@ public class LabSimulationService {
                     excluded,
                     "7 precedenti per squadra; EV >= 5%, probabilita >= 50%, quota <= 5; una"
                         + " singola per incontro idoneo; ultimo prezzo prepartita",
-                    exclusions),
-                proposed);
+                    exclusions,
+                    learned),
+                proposed,
+                shadowProposals);
             progress.item(
                 "Settimana "
                     + step
@@ -325,7 +467,9 @@ public class LabSimulationService {
             "COMPLETED",
             "Calcolo offline completato in entrambe le modalita. Gli incontri senza sette"
                 + " precedenti, quote/mercati idonei o dati sufficienti sono esclusi, non"
-                + " forzati.");
+                + " forzati. Strategia "
+                + config.strategy()
+                + ". Esperimento retrospettivo: nessuna garanzia di rendimento futuro.");
       } catch (Exception e) {
         runs.finish(id, "FAILED", LabJobs.safe(e));
         throw e;
@@ -333,25 +477,98 @@ public class LabSimulationService {
     };
   }
 
-  private Optional<Candidate> choose(
-      GoalProbabilities model, List<LabQuote> quotes, Instant kickoff, Instant liveCutoff) {
+  private Selection choose(
+      GoalProbabilities model,
+      List<LabQuote> quotes,
+      Instant kickoff,
+      Instant liveCutoff,
+      LabLearning.Snapshot learned,
+      int competition,
+      String season,
+      List<Double> input) {
     List<Candidate> candidates = new ArrayList<>();
+    List<Candidate> shadows = new ArrayList<>();
+    Map<String, Integer> rejected = new TreeMap<>();
     for (var history : quotes) {
       var q = liveCutoff == null ? history.closing(kickoff) : history.asOf(liveCutoff, kickoff);
       if (q.isEmpty() || q.get().price().compareTo(new BigDecimal("5")) > 0) continue;
       var probability = model.probability(q.get());
-      if (probability.isEmpty() || probability.getAsDouble() < .5) continue;
-      double ev = probability.getAsDouble() * q.get().price().doubleValue() - 1;
-      if (ev >= .05) candidates.add(new Candidate(q.get(), probability.getAsDouble(), ev));
+      if (probability.isEmpty()) continue;
+      double raw = probability.getAsDouble(), rawEv = raw * q.get().price().doubleValue() - 1;
+      // The calibrator was learned on this eligibility regime; do not promote unsupported events.
+      if (raw < .5 || rawEv < .05) continue;
+      shadows.add(new Candidate(q.get(), raw, raw, rawEv));
+      double calibrated = learned == null ? raw : learned.calibration().apply(raw);
+      double ev = calibrated * q.get().price().doubleValue() - 1;
+      if (calibrated < .5 || ev < .05) {
+        if (raw >= .5 && rawEv >= .05)
+          rejected.merge("Calibrazione: probabilita o EV insufficienti", 1, Integer::sum);
+        continue;
+      }
+      var reason =
+          learned == null
+              ? Optional.<String>empty()
+              : learning.rejection(learned, q.get(), competition, season, input, kickoff, raw);
+      if (reason.isPresent()) {
+        rejected.merge(reason.get(), 1, Integer::sum);
+        continue;
+      }
+      candidates.add(new Candidate(q.get(), raw, calibrated, ev));
     }
-    return candidates.stream()
-        .sorted(
-            Comparator.comparingDouble(Candidate::ev)
-                .reversed()
-                .thenComparing(c -> c.quote().bookmaker())
-                .thenComparing(c -> c.quote().market().id())
-                .thenComparing(c -> c.quote().outcomeId()))
-        .findFirst();
+    var order =
+        Comparator.comparingDouble(Candidate::ev)
+            .reversed()
+            .thenComparing(c -> c.quote().bookmaker())
+            .thenComparing(c -> c.quote().market().id())
+            .thenComparing(c -> c.quote().outcomeId());
+    return new Selection(
+        candidates.stream().min(order), shadows.stream().min(order), Map.copyOf(rejected));
+  }
+
+  private LabRunRepository.Run reference(LabRunConfig config) {
+    if (config.strategy().equals("BASELINE")) return null;
+    var parent = runs.run(config.referenceRunId());
+    var c = parent.config();
+    if (!parent.status().equals("COMPLETED")
+        || !c.strategy().equals("BASELINE")
+        || !c.mode().equals("HISTORICAL")
+        || !c.from().equals(config.from())
+        || !c.to().equals(config.to())
+        || !new HashSet<>(c.competitionIds()).equals(new HashSet<>(config.competitionIds()))
+        || c.unitProfit().compareTo(config.unitProfit()) != 0
+        || !c.mode().equals(config.mode()))
+      throw new IllegalArgumentException(
+          "L'esperimento deve conservare periodo, campionati e puntata della campagna originale");
+    return parent;
+  }
+
+  private Optional<LabLearning.Observation> observe(LabBet bet, LabMatch result, Instant cutoff) {
+    if (result == null
+        || result.score() == null
+        || !result.fixture().finishedBefore(cutoff)
+        || !bet.availableAt().isBefore(cutoff)) return Optional.empty();
+    boolean won = settlement.won(bet.quote(), result.score());
+    double net =
+        won
+            ? bet.stake()
+                .multiply(bet.quote().price().subtract(BigDecimal.ONE))
+                .setScale(2, java.math.RoundingMode.HALF_UP)
+                .doubleValue()
+            : -bet.stake().doubleValue();
+    return Optional.of(
+        new LabLearning.Observation(
+            bet.fixtureId(),
+            bet.competitionId(),
+            bet.season(),
+            bet.kickoff(),
+            bet.availableAt(),
+            result.fixture().endedAt(),
+            bet.quote(),
+            bet.probability(),
+            won,
+            bet.stake().doubleValue(),
+            net,
+            bet.features()));
   }
 
   private List<LabMatch> visible(List<LabMatch> all, Instant cutoff) {

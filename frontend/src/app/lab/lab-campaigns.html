@@ -1,0 +1,116 @@
+<h2 class="h4">Campagne e confronto</h2>
+<p class="text-secondary">
+  Ogni campagna conserva modelli, proposte ed esiti propri. Il confronto usa la modalità coppe e il
+  campionato selezionati in alto. Consultare una campagna non avvia calcoli o download.
+</p>
+<div class="form-check mb-3">
+  <input
+    id="campaign-final"
+    class="form-check-input"
+    type="checkbox"
+    [checked]="finalTotals()"
+    (change)="finalTotals.set($any($event.target).checked)"
+  />
+  <label for="campaign-final" class="form-check-label"
+    >Mostra i risultati finali dell’intero periodo storico</label
+  >
+</div>
+<p class="small text-secondary">
+  {{
+    finalTotals()
+      ? 'Riepilogo finale: include gli esiti successivi all’istante simulato.'
+      : 'Confronto limitato agli esiti disponibili all’istante simulato selezionato.'
+  }}
+</p>
+@if (error()) {
+  <p class="alert alert-danger" role="alert">{{ error() }}</p>
+}
+@if (loading()) {
+  <p role="status">Caricamento del confronto…</p>
+}
+@for (item of rows(); track item.run.id) {
+  <article class="card card-body mb-3" [class.border-primary]="state.runId() === item.run.id">
+    <div class="d-flex justify-content-between gap-3 flex-wrap">
+      <div>
+        <h3 class="h5 mb-1">{{ state.runLabel(item.run) }}</h3>
+        <p class="small mb-1">
+          {{ state.strategyLabel(item.run) }} · {{ item.run.status }} ·
+          {{ item.run.config.from | date: 'dd/MM/yyyy' }} –
+          {{ item.run.config.to | date: 'dd/MM/yyyy' }}
+        </p>
+        <small class="text-secondary"
+          >Creata {{ item.run.createdAt | date: 'dd/MM/yyyy HH:mm' }} · utile obiettivo
+          {{ item.run.config.unitProfit | currency: 'EUR' }}</small
+        >
+      </div>
+      <button
+        class="btn btn-outline-primary align-self-start"
+        [disabled]="item.run.status !== 'COMPLETED'"
+        (click)="state.setRun(item.run.id)"
+        [attr.aria-pressed]="state.runId() === item.run.id"
+      >
+        {{ state.runId() === item.run.id ? 'Campagna selezionata' : 'Seleziona campagna' }}
+      </button>
+    </div>
+    @if (item.run.status !== 'COMPLETED') {
+      <p class="small text-secondary mt-3 mb-0" role="status">
+        Campagna non conclusa: saldo e grafico finali saranno disponibili al completamento.
+        {{ item.run.report }}
+      </p>
+    }
+    @if (item.metric; as m) {
+      <div class="row g-3 mt-1">
+        <div class="col-6 col-lg-2">
+          <small>Netto</small
+          ><strong class="d-block fs-4" [class.text-danger]="m.net < 0">{{
+            m.net | currency: 'EUR'
+          }}</strong>
+        </div>
+        <div class="col-6 col-lg-2">
+          <small>Rendimento</small><strong class="d-block">{{ m.roi | percent: '1.2-2' }}</strong>
+        </div>
+        <div class="col-6 col-lg-2">
+          <small>Concluse / proposte</small
+          ><strong class="d-block">{{ m.settled }} / {{ m.proposed }}</strong>
+        </div>
+        <div class="col-6 col-lg-3">
+          <small>Totale puntato</small
+          ><strong class="d-block">{{ m.turnover | currency: 'EUR' }}</strong>
+        </div>
+        <div class="col-6 col-lg-3">
+          <small>Massima discesa dal picco</small
+          ><strong class="d-block">{{ m.maxDrawdown | currency: 'EUR' }}</strong>
+        </div>
+      </div>
+      <details class="mt-3">
+        <summary>Probabilità, quote e tracciabilità</summary>
+        <p class="small mt-2">
+          Probabilità media
+          {{ m.meanProbability === null ? '—' : (m.meanProbability | percent: '1.1-1') }} · vincite
+          {{ m.winRate === null ? '—' : (m.winRate | percent: '1.1-1') }} · errore Brier
+          {{ m.brier === null ? '—' : (m.brier | number: '1.4-4') }} (più basso è meglio).
+          {{ m.quotesOlder24h }} quote delle singole concluse osservate oltre 24 ore prima della
+          partita.
+        </p>
+        <p class="small text-break mb-1">
+          ID: {{ item.run.id }}<br />Archivio: {{ item.run.dataHash }}
+        </p>
+        @if (item.run.config.referenceRunId) {
+          <p class="small text-break">Campagna originale: {{ item.run.config.referenceRunId }}</p>
+        }
+        <p class="small mb-0">{{ item.run.report }}</p>
+      </details>
+    }
+  </article>
+} @empty {
+  @if (!loading() && !error()) {
+    <p class="alert alert-info">Nessuna campagna disponibile.</p>
+  }
+}
+<a class="btn btn-outline-secondary" routerLink="/andamento"
+  >Apri il grafico della campagna selezionata</a
+>
+<p class="small text-secondary mt-3">
+  Confrontare periodi, unità, campionati e archivio uguali. Un miglioramento su questo storico resta
+  esplorativo e non dimostra un rendimento futuro.
+</p>

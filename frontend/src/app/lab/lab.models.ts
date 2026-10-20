@@ -20,6 +20,9 @@ export interface RunConfig {
   competitionIds: number[];
   unitProfit: number;
   mode: 'HISTORICAL' | 'OPERATIONAL';
+  name?: string;
+  strategy?: 'BASELINE' | 'CALIBRATED' | 'SIGNALS' | 'FILTERED' | 'ADAPTIVE';
+  referenceRunId?: string | null;
 }
 export interface Run {
   id: string;
@@ -101,6 +104,60 @@ export interface ModelStep {
   excluded: number;
   policy: string;
   exclusions: Record<string, string>;
+  learning?: LearningSnapshot | null;
+}
+export interface LearningSnapshot {
+  version: string;
+  observations: number;
+  latestResult: string | null;
+  calibration: {
+    support: number;
+    fitted: number;
+    validation: number;
+    offset: number;
+    rawBrier: number | null;
+    calibratedBrier: number | null;
+    accepted: boolean;
+  };
+  signals: {
+    group: string;
+    observations: number;
+    firstGain: number;
+    secondGain: number;
+    disabled: boolean;
+  }[];
+  rules: {
+    key: string;
+    description: string;
+    support: number;
+    firstSupport: number;
+    secondSupport: number;
+    firstRoi: number;
+    secondRoi: number;
+    comparisonFirstRoi: number;
+    comparisonSecondRoi: number;
+    upperMeanReturn: number;
+    excluded: boolean;
+  }[];
+  rejectedCandidates: Record<string, number>;
+}
+export interface CampaignMetrics {
+  includeCupScores: boolean;
+  proposed: number;
+  settled: number;
+  won: number;
+  turnover: number;
+  net: number;
+  roi: number;
+  maxDrawdown: number;
+  brier: number | null;
+  meanProbability: number | null;
+  winRate: number | null;
+  quotesOlder24h: number;
+}
+export interface Campaign {
+  run: Run;
+  metrics: CampaignMetrics[];
 }
 export interface Workspace {
   run: Run;

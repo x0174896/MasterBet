@@ -1,6 +1,15 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Coverage, Run, Workspace, TeamStats, Job, Session, RunConfig } from './lab.models';
+import {
+  Coverage,
+  Run,
+  Workspace,
+  TeamStats,
+  Job,
+  Session,
+  RunConfig,
+  Campaign,
+} from './lab.models';
 
 @Injectable({ providedIn: 'root' })
 export class LabApi {
@@ -10,6 +19,24 @@ export class LabApi {
   }
   runs() {
     return this.http.get<Run[]>('/api/lab/runs');
+  }
+  campaigns(cursor: string | null, competition: number) {
+    let params = new HttpParams().set('competition', competition);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<Campaign[]>('/api/lab/campaigns', { params });
+  }
+  experiment(
+    referenceRunId: string,
+    name: string,
+    strategy: 'CALIBRATED' | 'SIGNALS' | 'FILTERED' | 'ADAPTIVE',
+  ) {
+    return this.http.post<Job>(
+      '/api/lab/admin/experiments',
+      { referenceRunId, name, strategy },
+      {
+        headers: { 'X-MasterBet-Admin': '1' },
+      },
+    );
   }
   workspace(
     runId: string,

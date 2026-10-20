@@ -75,6 +75,22 @@ public class LabQueryService {
       boolean cup,
       it.masterbet.statistics.domain.TeamStatistics team) {}
 
+  public record Metrics(
+      boolean includeCupScores,
+      int proposed,
+      int settled,
+      int won,
+      BigDecimal turnover,
+      BigDecimal net,
+      double roi,
+      BigDecimal maxDrawdown,
+      Double brier,
+      Double meanProbability,
+      Double winRate,
+      int quotesOlder24h) {}
+
+  public record Campaign(LabRunRepository.Run run, List<Metrics> metrics) {}
+
   private final LabRepository sources;
   private final LabRunRepository runs;
   private final MarketSettlement settlement;
@@ -150,8 +166,7 @@ public class LabQueryService {
                     b.includeCupScores() == cups
                         && (competition == 0 || b.competitionId() == competition))
             .toList();
-    Map<String, LabMatch> matches = new HashMap<>();
-    sources.matches().forEach(m -> matches.put(m.fixture().id(), m));
+    Map<String, LabMatch> matches = results(run);
     Instant from =
         bets.stream().map(LabBet::availableAt).min(Comparator.naturalOrder()).orElse(null);
     Instant to =
@@ -242,9 +257,92 @@ public class LabQueryService {
 
   public String reveal(String runId, String betId) {
     var b = runs.bets(runId).stream().filter(v -> v.id().equals(betId)).findFirst().orElseThrow();
-    var m = sources.match(b.fixtureId()).filter(v -> v.score() != null).orElseThrow();
+    var m =
+        Optional.ofNullable(results(runs.run(runId)).get(b.fixtureId()))
+            .filter(v -> v.score() != null)
+            .orElseThrow();
     runs.reveal(b.id());
     return profit(b, m).signum() > 0 ? "WON" : "LOST";
+  }
+
+  public List<Campaign> campaigns(Instant cursor, int competition) {
+    return runs.runs().stream()
+        .map(
+            run -> {
+              var bets = runs.bets(run.id());
+              var results = results(run);
+              return new Campaign(
+                  run,
+                  List.of(
+                      metrics(bets, results, false, cursor, competition),
+                      metrics(bets, results, true, cursor, competition)));
+            })
+        .toList();
+  }
+
+  private Map<String, LabMatch> results(LabRunRepository.Run run) {
+    var frozen = runs.results(run.id());
+    if (run.config().mode().equals("HISTORICAL")) return frozen;
+    // Operational campaigns can acquire results later; frozen records still take precedence.
+    Map<String, LabMatch> values = new HashMap<>();
+    sources.matches().forEach(m -> values.put(m.fixture().id(), m));
+    values.putAll(frozen);
+    return values;
+  }
+
+  private Metrics metrics(
+      List<LabBet> bets,
+      Map<String, LabMatch> results,
+      boolean cups,
+      Instant requested,
+      int competition) {
+    var own =
+        bets.stream()
+            .filter(
+                b ->
+                    b.includeCupScores() == cups
+                        && (competition == 0 || b.competitionId() == competition))
+            .toList();
+    var settled =
+        own.stream()
+            .filter(
+                b ->
+                    complete(
+                        results.get(b.fixtureId()), requested == null ? Instant.MAX : requested))
+            .sorted(
+                Comparator.comparing((LabBet b) -> results.get(b.fixtureId()).fixture().endedAt())
+                    .thenComparing(LabBet::id))
+            .toList();
+    BigDecimal turnover = BigDecimal.ZERO.setScale(2), net = BigDecimal.ZERO.setScale(2);
+    BigDecimal peak = net, drawdown = net;
+    int won = 0, stale = 0;
+    double brier = 0, predicted = 0;
+    for (var b : settled) {
+      var gain = profit(b, results.get(b.fixtureId()));
+      turnover = turnover.add(b.stake());
+      net = net.add(gain);
+      peak = peak.max(net);
+      drawdown = drawdown.max(peak.subtract(net));
+      boolean win = gain.signum() > 0;
+      if (win) won++;
+      if (Duration.between(b.quote().observedAt(), b.kickoff()).toHours() >= 24) stale++;
+      brier += Math.pow(b.probability() - (win ? 1 : 0), 2);
+      predicted += b.probability();
+    }
+    int n = settled.size();
+    return new Metrics(
+        cups,
+        own.size(),
+        n,
+        won,
+        turnover,
+        net,
+        turnover.signum() == 0 ? 0 : net.doubleValue() / turnover.doubleValue(),
+        drawdown,
+        n == 0 ? null : brier / n,
+        n == 0 ? null : predicted / n,
+        n == 0 ? null : (double) won / n,
+        stale);
   }
 
   public List<TeamStats> statistics(Instant cutoff, boolean cups, int competition) {

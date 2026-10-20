@@ -43,7 +43,10 @@ public class LabRunRepository {
   }
 
   public Run run(String id) {
-    return runs().stream().filter(r -> r.id().equals(id)).findFirst().orElseThrow();
+    return runs().stream()
+        .filter(r -> r.id().equals(id))
+        .findFirst()
+        .orElseThrow(() -> new NoSuchElementException("Campagna non trovata"));
   }
 
   public void create(String id, LabRunConfig config, String hash) {
@@ -73,6 +76,11 @@ public class LabRunRepository {
 
   @Transactional
   public void step(LabStep step, List<LabBet> bets) {
+    step(step, bets, List.of());
+  }
+
+  @Transactional
+  public void step(LabStep step, List<LabBet> bets, List<LabBet> shadows) {
     jdbc.update(
         "INSERT INTO lab_step(run_id,step_number,cutoff,include_cup_scores,payload)"
             + " VALUES(?,?,?,?,?)",
@@ -94,9 +102,19 @@ public class LabRunRepository {
           b.kickoff().toString(),
           b.availableAt().toString(),
           json.json(b));
+    for (var b : shadows)
+      jdbc.update(
+          "INSERT INTO lab_learning_prediction(run_id,fixture_id,include_cup_scores,payload)"
+              + " VALUES(?,?,?,?)",
+          step.runId(),
+          b.fixtureId(),
+          b.includeCupScores(),
+          json.json(b));
   }
 
+  @Transactional
   public void finish(String id, String status, String report) {
+    freezeResults(id);
     var bets = bets(id);
     Instant first =
         bets.stream().map(LabBet::availableAt).min(Comparator.naturalOrder()).orElse(null);
@@ -108,6 +126,30 @@ public class LabRunRepository {
         last == null ? null : last.toString(),
         report,
         id);
+  }
+
+  /** Append only: later corrections must not rewrite a campaign's saved financial result. */
+  public void freezeResults(String id) {
+    jdbc.update(
+        "INSERT INTO lab_run_result(run_id,fixture_id,payload) SELECT ?,m.id,m.payload FROM"
+            + " lab_match m WHERE m.has_score=TRUE AND (EXISTS (SELECT 1 FROM lab_bet b WHERE"
+            + " b.run_id=? AND b.fixture_id=m.id) OR EXISTS (SELECT 1 FROM lab_learning_prediction"
+            + " p WHERE p.run_id=? AND p.fixture_id=m.id)) AND NOT EXISTS (SELECT 1 FROM"
+            + " lab_run_result f WHERE f.run_id=? AND f.fixture_id=m.id)",
+        id,
+        id,
+        id,
+        id);
+  }
+
+  public Map<String, LabMatch> results(String id) {
+    Map<String, LabMatch> result = new HashMap<>();
+    jdbc.query(
+        "SELECT fixture_id,payload FROM lab_run_result WHERE run_id=?",
+        (org.springframework.jdbc.core.RowCallbackHandler)
+            r -> result.put(r.getString(1), json.read(r.getString(2), LabMatch.class)),
+        id);
+    return Map.copyOf(result);
   }
 
   public boolean revealed(String id) {

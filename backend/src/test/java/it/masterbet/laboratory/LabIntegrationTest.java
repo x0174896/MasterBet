@@ -75,6 +75,8 @@ class LabIntegrationTest {
             "lab_fixture_alignment",
             "lab_download_checkpoint",
             "lab_spoiler",
+            "lab_run_result",
+            "lab_learning_prediction",
             "lab_bet",
             "lab_step",
             "lab_run",
@@ -363,6 +365,26 @@ class LabIntegrationTest {
     assertEquals(after.chart().get(1).settledAt(), after.chart().get(2).settledAt());
     assertEquals("PENDING", after.bets().get(2).status());
     assertEquals(at, query.workspace(id, at.minusSeconds(1), false, 0, 0).cursor());
+    var saved = query.campaigns(null, 0).getFirst().metrics().getFirst();
+    assertEquals(3, saved.settled());
+    assertEquals(new BigDecimal("5.00"), saved.net());
+    assertEquals(new BigDecimal("5.00"), saved.maxDrawdown());
+    assertEquals(new BigDecimal("15.00"), saved.turnover());
+    // Source corrections cannot rewrite an already frozen campaign or its chart.
+    repo.save(LabData.match("a", 384, "2025/2026", kickoff, 1, 2, 1, 3, false));
+    assertEquals(
+        new BigDecimal("-5.00"),
+        query.workspace(id, kickoff.plusSeconds(7300), false, 0, 0).chart().get(1).profit());
+    assertEquals(saved, query.campaigns(null, 0).getFirst().metrics().getFirst());
+    var config =
+        context.getBean(LabExperimentService.class).config(id, "Nuovo esperimento", "ADAPTIVE");
+    assertEquals(id, config.referenceRunId());
+    assertEquals("ADAPTIVE", config.strategy());
+    assertEquals(runs.run(id).config().from(), config.from());
+    assertEquals(runs.run(id).config().unitProfit(), config.unitProfit());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> context.getBean(LabExperimentService.class).config(id, "x", "UNKNOWN"));
   }
 
   @Test
@@ -440,6 +462,41 @@ class LabIntegrationTest {
     assertEquals(firstSteps.getFirst().trainingHash(), secondStep.trainingHash());
     assertArrayEquals(firstSteps.getFirst().model().weights()[0], secondStep.model().weights()[0]);
     assertNotEquals(first.dataHash(), second.dataHash());
+    var experiment =
+        context.getBean(LabExperimentService.class).config(first.id(), "Adattiva", "ADAPTIVE");
+    var originalBets = runs.bets(first.id());
+    var originalSteps = runs.steps(first.id());
+    var sourceCounts = jdbc.queryForObject("SELECT COUNT(*) FROM lab_revision", Integer.class);
+    assertEquals(
+        "SUCCEEDED", jobs.blocking("calculate", simulation.calculate(experiment)).status());
+    var adaptive = runs.runs().getFirst();
+    assertEquals(first.id(), adaptive.config().referenceRunId());
+    assertEquals(originalBets, runs.bets(first.id()));
+    assertEquals(repo.json(originalSteps), repo.json(runs.steps(first.id())));
+    assertEquals(
+        sourceCounts, jdbc.queryForObject("SELECT COUNT(*) FROM lab_revision", Integer.class));
+    assertTrue(runs.steps(adaptive.id()).stream().allMatch(s -> s.learning() != null));
+    assertTrue(
+        runs.steps(adaptive.id()).stream()
+            .allMatch(
+                s ->
+                    s.learning().latestResult() == null
+                        || s.learning().latestResult().isBefore(s.cutoff())));
+    for (var b : runs.bets(adaptive.id())) {
+      var frozen =
+          runs.steps(adaptive.id()).stream()
+              .filter(s -> s.number() == b.step() && s.includeCupScores() == b.includeCupScores())
+              .findFirst()
+              .orElseThrow();
+      double raw =
+          new it.masterbet.model.domain.GoalProbabilities(
+                  frozen
+                      .model()
+                      .predict(b.features().stream().mapToDouble(Double::doubleValue).toArray()))
+              .probability(b.quote())
+              .orElseThrow();
+      assertEquals(b.probability(), frozen.learning().calibration().apply(raw), 1e-12);
+    }
   }
 
   @Test
@@ -449,7 +506,10 @@ class LabIntegrationTest {
             .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
             .build();
     assertEquals(401, send(client, "/admin/jobs", "GET", null, false).statusCode());
+    assertEquals(200, send(client, "/campaigns", "GET", null, false).statusCode());
+    assertEquals(404, send(client, "/workspace?runId=missing", "GET", null, false).statusCode());
     assertEquals(401, send(client, "/admin/campaign", "POST", "{}", true).statusCode());
+    assertEquals(401, send(client, "/admin/experiments", "POST", "{}", true).statusCode());
     var foreignOrigin =
         HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/lab/admin/login"))
             .header("Content-Type", "application/json")
@@ -483,6 +543,8 @@ class LabIntegrationTest {
     assertEquals(200, send(client, "/admin/jobs", "GET", null, false).statusCode());
     assertEquals(400, send(client, "/admin/campaign", "POST", "{}", true).statusCode());
     assertEquals(403, send(client, "/admin/calculate", "POST", "{}", false).statusCode());
+    assertEquals(403, send(client, "/admin/experiments", "POST", "{}", false).statusCode());
+    assertEquals(400, send(client, "/admin/experiments", "POST", "{}", true).statusCode());
     assertEquals(200, send(client, "/admin/logout", "POST", "{}", true).statusCode());
     assertEquals(401, send(client, "/admin/jobs", "GET", null, false).statusCode());
   }

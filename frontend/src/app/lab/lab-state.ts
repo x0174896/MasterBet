@@ -19,16 +19,28 @@ export class LabState {
   private pending?: Subscription;
   private statisticsRequest?: Subscription;
   private initialized = false;
+  private archiveRequest?: Subscription;
   init() {
     if (!this.initialized) {
       this.initialized = true;
+      try {
+        this.runId.set(localStorage.getItem('masterbet.campaign') ?? '');
+      } catch {
+        /* Storage optional. */
+      }
       this.refresh();
     }
   }
   refresh() {
+    this.archiveRequest?.unsubscribe();
+    this.pending?.unsubscribe();
+    this.statisticsRequest?.unsubscribe();
     this.loading.set(true);
     this.error.set('');
-    forkJoin({ coverage: this.api.coverage(), runs: this.api.runs() }).subscribe({
+    this.archiveRequest = forkJoin({
+      coverage: this.api.coverage(),
+      runs: this.api.runs(),
+    }).subscribe({
       next: ({ coverage, runs }) => {
         this.coverage.set(coverage);
         this.runs.set(runs);
@@ -45,9 +57,27 @@ export class LabState {
     });
   }
   setRun(id: string) {
+    if (!this.runs().some((r) => r.id === id && r.status === 'COMPLETED')) return;
     this.runId.set(id);
-    this.cursor.set(null);
+    try {
+      localStorage.setItem('masterbet.campaign', id);
+    } catch {
+      /* Storage optional. */
+    }
     this.load();
+  }
+  runLabel(run: Run) {
+    return run.config.name || `Campagna ${run.id.slice(0, 8)}`;
+  }
+  strategyLabel(run: Run) {
+    if (run.config.mode === 'OPERATIONAL') return 'Operativa';
+    if (run.config.strategy === 'SIGNALS') return 'Verifica delle statistiche';
+    if (run.config.strategy === 'FILTERED') return 'Filtri sulle categorie';
+    return run.config.strategy === 'ADAPTIVE'
+      ? 'Segnali e filtri adattivi'
+      : run.config.strategy === 'CALIBRATED'
+        ? 'Sola calibrazione'
+        : 'Originale';
   }
   setCups(value: boolean) {
     this.cups.set(value);
@@ -62,6 +92,13 @@ export class LabState {
     const date = new Date(value);
     if (!Number.isNaN(date.getTime())) {
       this.cursor.set(date.toISOString());
+      this.load();
+    }
+  }
+  goToEnd() {
+    const workspace = this.workspace();
+    if (workspace?.to && workspace.run.config.mode === 'HISTORICAL') {
+      this.cursor.set(workspace.to);
       this.load();
     }
   }

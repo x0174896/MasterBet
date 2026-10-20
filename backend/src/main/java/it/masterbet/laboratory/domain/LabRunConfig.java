@@ -9,7 +9,19 @@ public record LabRunConfig(
     LocalDate to,
     List<Integer> competitionIds,
     BigDecimal unitProfit,
-    String mode) {
+    String mode,
+    String name,
+    String strategy,
+    String referenceRunId) {
+  public LabRunConfig(
+      LocalDate from,
+      LocalDate to,
+      List<Integer> competitionIds,
+      BigDecimal unitProfit,
+      String mode) {
+    this(from, to, competitionIds, unitProfit, mode, null, null, null);
+  }
+
   public LabRunConfig {
     if (from == null) from = LocalDate.of(2026, 1, 1);
     if (to == null) to = LocalDate.now(ZoneOffset.UTC);
@@ -27,5 +39,13 @@ public record LabRunConfig(
     if (mode == null) mode = "HISTORICAL";
     if (!Set.of("HISTORICAL", "OPERATIONAL").contains(mode))
       throw new IllegalArgumentException("Modalita non valida");
+    name = name == null ? "" : name.strip();
+    if (name.length() > 120) throw new IllegalArgumentException("Nome campagna troppo lungo");
+    strategy = strategy == null ? "BASELINE" : strategy;
+    if (!Set.of("BASELINE", "CALIBRATED", "SIGNALS", "FILTERED", "ADAPTIVE").contains(strategy))
+      throw new IllegalArgumentException("Strategia non valida");
+    referenceRunId = referenceRunId == null || referenceRunId.isBlank() ? null : referenceRunId;
+    if (!strategy.equals("BASELINE") && referenceRunId == null)
+      throw new IllegalArgumentException("Campagna di riferimento necessaria");
   }
 }

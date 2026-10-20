@@ -12,6 +12,7 @@
   </button>
 </section>
 <nav class="nav nav-tabs mb-4 flex-nowrap lab-nav" aria-label="Sezioni laboratorio">
+  <a class="nav-link" routerLink="/campagne" routerLinkActive="active">Campagne</a>
   <a class="nav-link" routerLink="/scommesse" routerLinkActive="active">Scommesse</a
   ><a class="nav-link" routerLink="/andamento" routerLinkActive="active">Andamento</a
   ><a class="nav-link" routerLink="/campionati" routerLinkActive="active"
@@ -22,21 +23,24 @@
 <div class="card card-body mb-4">
   <div class="row g-3 align-items-end">
     <div class="col-md-4">
-      <label class="form-label" for="lab-run">Elaborazione</label
+      <label class="form-label" for="lab-run">Campagna</label
       ><select
         id="lab-run"
         class="form-select"
         [value]="state.runId()"
         (change)="state.setRun($any($event.target).value)"
       >
-        <option value="">Nessuna elaborazione completa</option>
+        <option value="" [selected]="!state.runId()">Nessuna elaborazione completa</option>
         @for (run of state.runs(); track run.id) {
-          @if (run.status === 'COMPLETED') {
-            <option [value]="run.id">
-              {{ run.createdAt | date: 'dd/MM/yyyy HH:mm' }} ·
-              {{ run.config.mode === 'HISTORICAL' ? 'Test storico' : 'Operativo' }}
-            </option>
-          }
+          <option
+            [value]="run.id"
+            [selected]="state.runId() === run.id"
+            [disabled]="run.status !== 'COMPLETED'"
+          >
+            {{ state.runLabel(run) }} · {{ state.strategyLabel(run) }} ·
+            {{ run.createdAt | date: 'dd/MM/yyyy HH:mm' }}
+            {{ run.status === 'COMPLETED' ? '' : ' · ' + run.status }}
+          </option>
         }
       </select>
     </div>
@@ -57,19 +61,34 @@
       </select>
     </div>
     <div class="col-md-4">
-      <label class="form-label" for="lab-cursor">Istante simulato (ora locale)</label
-      ><input
-        id="lab-cursor"
-        class="form-control"
-        type="datetime-local"
-        [value]="state.localDate(state.cursor())"
-        [min]="state.localDate(state.workspace()?.from)"
-        [max]="state.localDate(state.workspace()?.to)"
-        [disabled]="
-          !state.workspace()?.from || state.workspace()?.run?.config?.mode === 'OPERATIONAL'
-        "
-        (change)="state.setCursor($any($event.target).value)"
-      />
+      <label class="form-label" for="lab-cursor">Istante simulato (ora locale)</label>
+      <div class="input-group">
+        <input
+          id="lab-cursor"
+          class="form-control"
+          type="datetime-local"
+          [value]="state.localDate(state.cursor())"
+          [min]="state.localDate(state.workspace()?.from)"
+          [max]="state.localDate(state.workspace()?.to)"
+          [disabled]="
+            !state.workspace()?.from || state.workspace()?.run?.config?.mode === 'OPERATIONAL'
+          "
+          (change)="state.setCursor($any($event.target).value)"
+        />
+        <button
+          class="btn btn-outline-secondary"
+          aria-label="Vai a fine campagna"
+          title="Vai all’ultimo esito, compresi secondi e millisecondi"
+          [disabled]="
+            !state.workspace()?.to ||
+            state.workspace()?.run?.config?.mode === 'OPERATIONAL' ||
+            state.loading()
+          "
+          (click)="state.goToEnd()"
+        >
+          Fine
+        </button>
+      </div>
     </div>
     <div class="col-12">
       <div class="form-check">

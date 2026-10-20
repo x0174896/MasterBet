@@ -30,6 +30,45 @@ export class LabAdmin {
   refresh = false;
   unitProfit = 5;
   mode: 'HISTORICAL' | 'OPERATIONAL' = 'HISTORICAL';
+  referenceRunId = '';
+  experimentName = 'Ricerca dei segnali e filtri adattivi';
+  experimentStrategy: 'CALIBRATED' | 'SIGNALS' | 'FILTERED' | 'ADAPTIVE' = 'ADAPTIVE';
+  referenceRuns() {
+    return this.state
+      .runs()
+      .filter(
+        (r) =>
+          r.status === 'COMPLETED' &&
+          r.config.mode === 'HISTORICAL' &&
+          (!r.config.strategy || r.config.strategy === 'BASELINE'),
+      );
+  }
+  startExperiment() {
+    const reference = this.referenceRunId || this.referenceRuns()[0]?.id;
+    if (!reference) {
+      this.error.set('Seleziona una campagna originale completa.');
+      return;
+    }
+    this.busy.set(true);
+    this.error.set('');
+    this.notice.set('');
+    this.api.experiment(reference, this.experimentName, this.experimentStrategy).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.notice.set(
+          'Nuova campagna avviata sui dati locali. La campagna originale è conservata.',
+        );
+        this.refreshJobs();
+        this.state.refresh();
+      },
+      error: () => {
+        this.busy.set(false);
+        this.error.set(
+          'Avvio non riuscito. Verifica la campagna di riferimento e i processi in corso.',
+        );
+      },
+    });
+  }
   constructor() {
     this.api
       .session()

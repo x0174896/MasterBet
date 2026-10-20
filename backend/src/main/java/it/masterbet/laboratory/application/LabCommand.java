@@ -15,6 +15,7 @@ public class LabCommand implements ApplicationRunner {
   private final ConfigurableApplicationContext context;
   private final LabLegacyReset reset;
   private final LabCampaignService campaign;
+  private final LabExperimentService experiments;
 
   public LabCommand(
       LabJobs jobs,
@@ -22,13 +23,15 @@ public class LabCommand implements ApplicationRunner {
       LabSimulationService simulation,
       ConfigurableApplicationContext context,
       LabLegacyReset reset,
-      LabCampaignService campaign) {
+      LabCampaignService campaign,
+      LabExperimentService experiments) {
     this.jobs = jobs;
     this.downloads = downloads;
     this.simulation = simulation;
     this.context = context;
     this.reset = reset;
     this.campaign = campaign;
+    this.experiments = experiments;
   }
 
   @Override
@@ -68,9 +71,15 @@ public class LabCommand implements ApplicationRunner {
           case "calculate" ->
               simulation.calculate(
                   new LabRunConfig(request.from(), request.to(), competitions, null, "HISTORICAL"));
+          case "experiment" ->
+              simulation.calculate(
+                  experiments.config(
+                      option(args, "lab-reference", ""),
+                      option(args, "lab-name", "Ricerca adattiva"),
+                      option(args, "lab-strategy", "ADAPTIVE")));
           default -> throw new IllegalArgumentException("Azione sconosciuta");
         };
-    var status = jobs.blocking(action, operation);
+    var status = jobs.blocking(action.equals("experiment") ? "calculate" : action, operation);
     System.out.println(
         "MASTERBET_LAB "
             + status.status()
@@ -87,5 +96,9 @@ public class LabCommand implements ApplicationRunner {
 
   private LocalDate date(ApplicationArguments args, String key) {
     return args.containsOption(key) ? LocalDate.parse(args.getOptionValues(key).getFirst()) : null;
+  }
+
+  private String option(ApplicationArguments args, String key, String fallback) {
+    return args.containsOption(key) ? args.getOptionValues(key).getFirst() : fallback;
   }
 }
